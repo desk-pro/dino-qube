@@ -8,7 +8,7 @@ export const INITIAL_SPEED = 6;
 export const MAX_SPEED = 15;
 export const SPEED_INCREMENT = 0.001;
 
-export const PLAYER_WIDTH = 44;
+export const PLAYER_WIDTH = 34; // Reduced width for thinner character
 export const PLAYER_HEIGHT = 80; // Taller for a boy
 export const PLAYER_START_X = 50;
 

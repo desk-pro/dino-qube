@@ -13,7 +13,7 @@ export interface GameObject {
 
 export interface Obstacle extends GameObject {
   id: number;
-  type: 'CACTUS_SMALL' | 'CACTUS_LARGE' | 'BIRD';
+  type: 'CACTUS_SMALL' | 'CACTUS_LARGE' | 'BIRD' | 'ROCK';
 }
 
 export interface Cloud {
@@ -22,6 +22,14 @@ export interface Cloud {
   y: number;
   speed: number;
   scale: number;
+}
+
+export interface Star {
+  id: number;
+  x: number;
+  y: number;
+  opacity: number;
+  size: number;
 }
 
 export interface Particle {

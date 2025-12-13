@@ -27,7 +27,7 @@ function App() {
             G
           </div>
           <div>
-            <h1 className="font-bold text-lg leading-tight">Le Garçon à Lunettes</h1>
+            <h1 className="font-bold text-lg leading-tight">Quentin Qui Court</h1>
             <p className="text-xs text-slate-400">Runner infini</p>
           </div>
         </div>

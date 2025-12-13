@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { GameStatus, Obstacle, Cloud, Particle } from '../types';
+import { GameStatus, Obstacle, Cloud, Particle, Star } from '../types';
 import {
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
@@ -15,7 +15,7 @@ import {
   OBSTACLE_SPAWN_MIN_GAP,
   OBSTACLE_SPAWN_MAX_GAP
 } from '../constants';
-import { Volume2, VolumeX, Share2, RefreshCw, Trophy, Play } from 'lucide-react';
+import { Share2, RefreshCw, Trophy, Play, Check } from 'lucide-react';
 
 interface GameCanvasProps {
   onGameOver: (score: number) => void;
@@ -39,18 +39,31 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
   const obstaclesRef = useRef<Obstacle[]>([]);
   const cloudsRef = useRef<Cloud[]>([]);
   const particlesRef = useRef<Particle[]>([]);
+  const starsRef = useRef<Star[]>([]);
   const gameSpeedRef = useRef<number>(INITIAL_SPEED);
   const frameCountRef = useRef<number>(0);
+  const cycleRef = useRef<number>(0); // 0 to 1 representing day/night cycle
 
   // React State for UI
   const [displayStatus, setDisplayStatus] = useState<GameStatus>(GameStatus.START);
   const [currentScore, setCurrentScore] = useState(0);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isNewRecord, setIsNewRecord] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
 
-  const playSound = (type: 'jump' | 'score' | 'hit') => {
-    if (isMuted) return;
-    // Audio implementation placeholder
-  };
+  // --- Helpers ---
+  
+  // Initialize Stars (for night time)
+  useEffect(() => {
+    for(let i=0; i<50; i++) {
+        starsRef.current.push({
+            id: i,
+            x: Math.random() * CANVAS_WIDTH,
+            y: Math.random() * (GROUND_Y - 50),
+            opacity: Math.random(),
+            size: Math.random() * 2
+        });
+    }
+  }, []);
 
   // --- Particle System ---
   const spawnParticles = (x: number, y: number, count: number, type: 'dust' | 'impact') => {
@@ -77,7 +90,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     let y = GROUND_Y - height;
 
     // Bird Spawn Logic (only after score > 150)
-    if (scoreRef.current > 150 && Math.random() > 0.7) {
+    if (scoreRef.current > 150 && Math.random() > 0.75) {
         type = 'BIRD';
         width = 40;
         height = 30;
@@ -86,7 +99,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
         y = isHigh 
           ? GROUND_Y - PLAYER_HEIGHT - 10  // Mid-air (requires clean jump)
           : GROUND_Y - 50; // Low (standard jump)
-    } else if (typeChance > 0.7) {
+    } else if (Math.random() > 0.8) {
+        // Rock Logic
+        type = 'ROCK';
+        width = 40;
+        height = 25; // Low
+        y = GROUND_Y - height;
+    } else if (typeChance > 0.6) {
       type = 'CACTUS_LARGE';
       width = 40;
       height = 70;
@@ -120,6 +139,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     setDisplayStatus(GameStatus.PLAYING);
     scoreRef.current = 0;
     setCurrentScore(0);
+    setIsNewRecord(false);
+    setCopySuccess(false);
     gameSpeedRef.current = INITIAL_SPEED;
     obstaclesRef.current = [];
     cloudsRef.current = [];
@@ -145,7 +166,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     if (!playerRef.current.isJumping) {
       playerRef.current.vy = JUMP_FORCE;
       playerRef.current.isJumping = true;
-      playSound('jump');
       // Jump Dust
       spawnParticles(playerRef.current.x + PLAYER_WIDTH / 2, playerRef.current.y + PLAYER_HEIGHT, 5, 'dust');
     }
@@ -156,6 +176,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
 
     const player = playerRef.current;
     frameCountRef.current++;
+    
+    // Cycle Day/Night (Complete cycle every 3000 frames)
+    cycleRef.current = (frameCountRef.current % 3000) / 3000;
 
     // Physics
     player.vy += GRAVITY;
@@ -186,9 +209,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     scoreRef.current += 0.1 * (gameSpeedRef.current / INITIAL_SPEED);
     if (Math.floor(scoreRef.current) > currentScore) {
       setCurrentScore(Math.floor(scoreRef.current));
-      if (Math.floor(scoreRef.current) % 100 === 0 && Math.floor(scoreRef.current) > 0) {
-        playSound('score');
-      }
     }
 
     // Obstacles
@@ -242,6 +262,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
             width: obs.width - 4,
             height: obs.height - 14
         }
+      } else if (obs.type === 'ROCK') {
+         obsHitbox = {
+            x: obs.x + 2,
+            y: obs.y + 2,
+            width: obs.width - 4,
+            height: obs.height - 4
+        }
       }
 
       if (
@@ -251,10 +278,19 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
         playerHitbox.y + playerHitbox.height > obsHitbox.y
       ) {
         // Crash
+        
+        // Calculate record status BEFORE updating parent/highScore prop
+        const finalScore = Math.floor(scoreRef.current);
+        if (finalScore > highScore) {
+            setIsNewRecord(true);
+        } else {
+            setIsNewRecord(false);
+        }
+
         statusRef.current = GameStatus.GAME_OVER;
         setDisplayStatus(GameStatus.GAME_OVER);
-        onGameOver(Math.floor(scoreRef.current));
-        playSound('hit');
+        onGameOver(finalScore);
+        
         // Impact particles
         spawnParticles(player.x + PLAYER_WIDTH/2, player.y + PLAYER_HEIGHT/2, 20, 'impact');
       }
@@ -262,6 +298,54 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
   };
 
   // --- Draw Helpers ---
+  
+  // Interpolate two hex colors
+  const lerpColor = (a: string, b: string, amount: number) => {
+    const ah = parseInt(a.replace(/#/g, ''), 16),
+      ar = ah >> 16, ag = ah >> 8 & 0xff, ab = ah & 0xff,
+      bh = parseInt(b.replace(/#/g, ''), 16),
+      br = bh >> 16, bg = bh >> 8 & 0xff, bb = bh & 0xff,
+      rr = ar + amount * (br - ar),
+      rg = ag + amount * (bg - ag),
+      rb = ab + amount * (bb - ab);
+    return '#' + ((1 << 24) + (rr << 16) + (rg << 8) + rb | 0).toString(16).slice(1);
+  };
+
+  // Get Sky Color based on cycle
+  const getSkyColor = (t: number) => {
+      // 0.0 - 0.3: Day (#38bdf8)
+      // 0.3 - 0.4: Sunset (#fdba74)
+      // 0.4 - 0.5: Dusk (#1e293b)
+      // 0.5 - 0.9: Night (#0f172a)
+      // 0.9 - 1.0: Sunrise (#fcd34d)
+      if (t < 0.3) return '#38bdf8';
+      if (t < 0.4) return lerpColor('#38bdf8', '#fdba74', (t - 0.3) * 10);
+      if (t < 0.5) return lerpColor('#fdba74', '#0f172a', (t - 0.4) * 10);
+      if (t < 0.9) return '#0f172a';
+      return lerpColor('#0f172a', '#38bdf8', (t - 0.9) * 10);
+  };
+  
+  const drawRock = (ctx: CanvasRenderingContext2D, obs: Obstacle) => {
+    ctx.save();
+    ctx.translate(obs.x, obs.y);
+    
+    ctx.fillStyle = '#64748b'; // slate-500
+    ctx.beginPath();
+    ctx.moveTo(0, obs.height);
+    ctx.lineTo(5, 5);
+    ctx.lineTo(obs.width - 5, 2);
+    ctx.lineTo(obs.width, obs.height);
+    ctx.fill();
+    
+    // texture
+    ctx.fillStyle = '#475569';
+    ctx.beginPath();
+    ctx.arc(10, 15, 3, 0, Math.PI * 2);
+    ctx.arc(25, 10, 4, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.restore();
+  };
 
   const drawBird = (ctx: CanvasRenderingContext2D, obs: Obstacle) => {
     ctx.save();
@@ -318,91 +402,79 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     ctx.save();
     ctx.translate(x, y);
 
-    // Running animation frame
+    // --- CHARACTER DESIGN ---
+    const COLORS = {
+      SKIN: '#FFD1AA',
+      SHIRT: '#39FF14', // NEON GREEN
+      SHORTS: '#C2B280', // Beige/Khaki
+      SOCKS: '#111827',  // Black socks
+      SHOES: '#1F2937', // Dark Grey shoes
+      HAIR: '#5D4037',  // Medium Brown
+      GLASSES: '#000000',
+      EYES: '#000000'
+    };
+
+    const CENTER_X = 17;
     const runCycle = Math.floor(frame / 5) % 2; 
     const legOffset = isJumping ? 0 : (runCycle === 0 ? 5 : -5);
 
-    // Color Palette
-    const skinColor = '#FFD1AA';
-    const shirtColor = '#3B82F6'; // Blue-500
-    const shoeColor = '#DC2626'; // Red-600
+    const leftKneeX = (CENTER_X - 4) + (isJumping ? 10 : legOffset * 2);
+    const leftFootX = (CENTER_X - 4) + (isJumping ? 5 : legOffset * 3);
+    const rightKneeX = (CENTER_X + 4) + (isJumping ? 10 : -legOffset * 2);
+    const rightFootX = (CENTER_X + 4) + (isJumping ? 5 : -legOffset * 3);
 
     // Legs
-    ctx.strokeStyle = skinColor;
+    ctx.strokeStyle = COLORS.SKIN;
     ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(CENTER_X - 4, 50); ctx.lineTo(leftKneeX, 70); ctx.lineTo(leftFootX, 78); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(CENTER_X + 4, 50); ctx.lineTo(rightKneeX, 70); ctx.lineTo(rightFootX, 78); ctx.stroke();
+
+    // Socks & Shoes
+    ctx.fillStyle = COLORS.SOCKS;
+    ctx.beginPath(); ctx.rect(leftFootX - 2, 74, 4, 6); ctx.fill();
+    ctx.beginPath(); ctx.rect(rightFootX - 2, 74, 4, 6); ctx.fill();
+    ctx.fillStyle = COLORS.SHOES;
+    ctx.beginPath(); ctx.ellipse(leftFootX, 80, 6, 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(rightFootX, 80, 6, 3, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Body
+    ctx.fillStyle = COLORS.SHORTS;
+    ctx.fillRect(CENTER_X - 7, 45, 14, 12); 
+    ctx.fillStyle = COLORS.SHIRT;
+    ctx.fillRect(CENTER_X - 7, 25, 14, 25);
     
-    // Left Leg
-    ctx.beginPath();
-    ctx.moveTo(15, 50); // Hip
-    ctx.lineTo(15 + (isJumping ? -10 : legOffset * 2), 70); // Knee
-    ctx.lineTo(15 + (isJumping ? -5 : legOffset * 3), 80); // Foot
-    ctx.stroke();
-
-    // Right Leg
-    ctx.beginPath();
-    ctx.moveTo(29, 50); // Hip
-    ctx.lineTo(29 - (isJumping ? 10 : legOffset * 2), 70); // Knee
-    ctx.lineTo(29 - (isJumping ? 5 : legOffset * 3), 80); // Foot
-    ctx.stroke();
-
-    // Shoes
-    ctx.fillStyle = shoeColor;
-    ctx.beginPath();
-    ctx.ellipse(15 + (isJumping ? -5 : legOffset * 3), 80, 6, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(29 - (isJumping ? 5 : legOffset * 3), 80, 6, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Body (Shirt)
-    ctx.fillStyle = shirtColor;
-    ctx.fillRect(10, 25, 24, 30);
-
     // Arms
-    ctx.strokeStyle = skinColor;
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(22, 30); // Shoulder
-    ctx.lineTo(35, 45 - legOffset); // Hand
-    ctx.stroke();
+    ctx.strokeStyle = COLORS.SKIN;
+    ctx.lineWidth = 3; 
+    ctx.beginPath(); ctx.moveTo(CENTER_X, 30); ctx.lineTo(CENTER_X + 13, 45 - legOffset); ctx.stroke();
 
     // Head
-    ctx.fillStyle = skinColor;
-    ctx.beginPath();
-    ctx.arc(22, 15, 14, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillStyle = COLORS.SKIN;
+    ctx.beginPath(); ctx.arc(CENTER_X, 15, 11, 0, Math.PI * 2); ctx.fill();
 
     // Hair
-    ctx.fillStyle = '#4B2610'; // Brown
+    ctx.fillStyle = COLORS.HAIR;
     ctx.beginPath();
-    ctx.arc(22, 13, 14, Math.PI, Math.PI * 2);
-    ctx.lineTo(36, 15);
-    ctx.lineTo(8, 15);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(22, 0);
-    ctx.lineTo(28, 5);
-    ctx.lineTo(16, 5);
-    ctx.fill();
+    ctx.arc(CENTER_X, 13, 11, Math.PI + 0.5, Math.PI * 2 - 0.5);
+    ctx.lineTo(CENTER_X + 11, 18); ctx.lineTo(CENTER_X + 10, 12);
+    ctx.lineTo(CENTER_X, 5); ctx.lineTo(CENTER_X - 10, 12); ctx.lineTo(CENTER_X - 11, 18); ctx.fill();
 
     // Glasses
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(14, 12, 6, 4);
-    ctx.strokeRect(24, 12, 6, 4);
-    ctx.beginPath();
-    ctx.moveTo(20, 14);
-    ctx.lineTo(24, 14);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(14, 13);
-    ctx.lineTo(8, 11);
-    ctx.stroke();
+    ctx.strokeStyle = COLORS.GLASSES;
+    ctx.lineWidth = 2; 
+    ctx.beginPath(); ctx.arc(CENTER_X - 5, 15, 5.5, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(CENTER_X + 5, 15, 5.5, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = COLORS.EYES;
+    ctx.beginPath(); ctx.arc(CENTER_X - 5, 15, 1.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(CENTER_X + 5, 15, 1.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(CENTER_X, 15); ctx.lineTo(CENTER_X, 15); ctx.stroke();
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(CENTER_X - 10, 14); ctx.lineTo(CENTER_X - 11, 12); ctx.stroke();
 
     // Smile
-    ctx.beginPath();
-    ctx.arc(22, 22, 4, 0, Math.PI);
-    ctx.stroke();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#8B5A2B';
+    ctx.beginPath(); ctx.arc(CENTER_X, 21, 4, 0.2, Math.PI - 0.2); ctx.stroke();
 
     ctx.restore();
   };
@@ -413,12 +485,25 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear
-    ctx.fillStyle = '#f8fafc'; // slate-50 background
+    // -- Background --
+    const skyColor = getSkyColor(cycleRef.current);
+    ctx.fillStyle = skyColor;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Draw Clouds
-    ctx.fillStyle = '#e2e8f0'; // slate-200
+    // Stars (Visible at night)
+    if (cycleRef.current > 0.45 && cycleRef.current < 0.95) {
+        ctx.fillStyle = 'white';
+        starsRef.current.forEach(star => {
+            ctx.globalAlpha = star.opacity * (cycleRef.current > 0.5 && cycleRef.current < 0.9 ? 1 : 0.5);
+            ctx.beginPath();
+            ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+    }
+
+    // -- Clouds --
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)'; 
     cloudsRef.current.forEach(cloud => {
       ctx.beginPath();
       ctx.arc(cloud.x, cloud.y, 20 * cloud.scale, 0, Math.PI * 2);
@@ -427,18 +512,24 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
       ctx.fill();
     });
 
-    // Draw Ground Line
+    // -- Ground --
     ctx.beginPath();
-    ctx.strokeStyle = '#475569'; // slate-600
+    ctx.strokeStyle = '#334155';
     ctx.lineWidth = 2;
     ctx.moveTo(0, GROUND_Y);
     ctx.lineTo(CANVAS_WIDTH, GROUND_Y);
     ctx.stroke();
+    
+    // Ground Fill
+    ctx.fillStyle = '#f1f5f9';
+    ctx.fillRect(0, GROUND_Y, CANVAS_WIDTH, CANVAS_HEIGHT - GROUND_Y);
 
-    // Draw Obstacles
+    // -- Obstacles --
     obstaclesRef.current.forEach(obs => {
       if (obs.type === 'BIRD') {
         drawBird(ctx, obs);
+      } else if (obs.type === 'ROCK') {
+        drawRock(ctx, obs);
       } else {
         // Cactus
         ctx.fillStyle = '#16a34a'; // green-600
@@ -454,7 +545,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
       }
     });
 
-    // Draw Particles
+    // -- Particles --
     particlesRef.current.forEach(p => {
         ctx.save();
         ctx.globalAlpha = p.life;
@@ -465,14 +556,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
         ctx.restore();
     });
 
-    // Draw Player
+    // -- Player --
     const p = playerRef.current;
-    if (statusRef.current !== GameStatus.GAME_OVER) {
-       drawBoy(ctx, p.x, p.y, p.isJumping, frameCountRef.current);
-    } else {
-        // Draw him knocked over or just same (for now same)
-        drawBoy(ctx, p.x, p.y, p.isJumping, frameCountRef.current);
-    }
+    drawBoy(ctx, p.x, p.y, p.isJumping, frameCountRef.current);
   };
 
   const loop = () => {
@@ -494,12 +580,19 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
         jump();
       }
     };
+    
+    // Allow touch on the window for better mobile response
     const handleTouchStart = (e: TouchEvent) => {
-       jump();
+       // Only jump if not interacting with a button
+       const target = e.target as HTMLElement;
+       if (target.tagName !== 'BUTTON') {
+          e.preventDefault(); // prevent scroll
+          jump();
+       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('touchstart', handleTouchStart);
+    window.addEventListener('touchstart', handleTouchStart, { passive: false });
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('touchstart', handleTouchStart);
@@ -508,21 +601,28 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
 
 
   const handleShare = async () => {
-    const text = `Je viens de faire ${currentScore} points sur Le Garçon à Lunettes ! 🏃‍♂️💨 Essaye de me battre !`;
+    const text = `Je viens de faire ${currentScore} points sur Quentin Qui Court ! 🏃‍♂️💨 Essaye de me battre !`;
+    const shareData = {
+        title: 'Quentin Qui Court',
+        text: text,
+        url: window.location.href,
+    };
     
-    if (navigator.share) {
+    if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
       try {
-        await navigator.share({
-          title: 'Le Garçon à Lunettes',
-          text: text,
-          url: window.location.href,
-        });
+        await navigator.share(shareData);
       } catch (err) {
-        console.log('Share canceled');
+        console.log('Share canceled or failed:', err);
       }
     } else {
-      navigator.clipboard.writeText(text + " " + window.location.href);
-      alert('Score copié dans le presse-papier !');
+      // Fallback: Copy to clipboard
+      try {
+        await navigator.clipboard.writeText(`${text} ${window.location.href}`);
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      } catch (err) {
+        alert("Impossible de partager automatiquement. Copiez l'URL pour partager !");
+      }
     }
   };
 
@@ -537,26 +637,19 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
 
       {/* HUD */}
       <div className="absolute top-4 right-4 flex gap-4 font-mono font-bold text-slate-700 text-lg md:text-xl select-none">
-        <div className="flex items-center gap-2">
-           <span className="text-slate-400 text-sm">HI</span> {highScore.toString().padStart(5, '0')}
+        <div className="flex items-center gap-2 px-2 py-1 bg-white/50 rounded-md backdrop-blur-sm">
+           <span className="text-slate-500 text-sm">HI</span> {highScore.toString().padStart(5, '0')}
         </div>
-        <div>
+        <div className="px-2 py-1 bg-white/50 rounded-md backdrop-blur-sm">
            {currentScore.toString().padStart(5, '0')}
         </div>
       </div>
 
-      <button 
-        onClick={() => setIsMuted(!isMuted)}
-        className="absolute top-4 left-4 p-2 bg-white/80 rounded-full hover:bg-white text-slate-700 transition-colors"
-      >
-        {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-      </button>
-
       {/* Start Screen Overlay */}
       {displayStatus === GameStatus.START && (
-        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center text-white p-6 text-center">
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center text-white p-6 text-center z-10">
           <div className="bg-white p-8 rounded-2xl shadow-2xl text-slate-800 max-w-md w-full animate-fade-in-up">
-            <h1 className="text-3xl md:text-4xl font-extrabold mb-2 text-blue-600">Le Garçon à Lunettes</h1>
+            <h1 className="text-3xl md:text-4xl font-extrabold mb-2 text-blue-600">Quentin Qui Court</h1>
             <p className="text-slate-500 mb-6">Évite les obstacles. Cours aussi loin que possible !</p>
             
             <div className="flex flex-col gap-4">
@@ -569,7 +662,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
               </button>
               
               <div className="text-sm text-slate-400 mt-2">
-                Espace ou Toucher pour sauter
+                Appuie pour sauter
               </div>
             </div>
           </div>
@@ -578,14 +671,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
 
       {/* Game Over Overlay */}
       {displayStatus === GameStatus.GAME_OVER && (
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-md flex flex-col items-center justify-center text-white p-4">
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-md flex flex-col items-center justify-center text-white p-4 z-10">
            <div className="bg-white p-8 rounded-2xl shadow-2xl text-slate-800 max-w-sm w-full text-center transform transition-all scale-100">
              <div className="mb-2 text-red-500 font-extrabold text-2xl uppercase tracking-widest">Game Over</div>
              <div className="text-5xl font-black text-slate-900 mb-6 font-mono">{currentScore}</div>
              
-             {currentScore >= highScore && currentScore > 0 && (
-               <div className="mb-6 flex items-center justify-center gap-2 text-yellow-500 font-bold bg-yellow-50 py-2 rounded-lg">
-                 <Trophy size={20} /> Nouveau Record !
+             {isNewRecord && currentScore > 0 && (
+               <div className="mb-6 flex items-center justify-center gap-2 text-yellow-600 font-bold bg-yellow-100 py-2 rounded-lg border border-yellow-200">
+                 <Trophy size={20} fill="currentColor" /> Nouveau Record !
                </div>
              )}
 
@@ -599,10 +692,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
                 </button>
                 <button 
                   onClick={handleShare}
-                  className="flex flex-col items-center justify-center gap-1 py-3 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-xl font-bold transition-colors"
+                  className={`flex flex-col items-center justify-center gap-1 py-3 rounded-xl font-bold transition-all ${copySuccess ? 'bg-green-100 text-green-700' : 'bg-blue-100 hover:bg-blue-200 text-blue-700'}`}
                 >
-                  <Share2 size={24} />
-                  <span>Partager</span>
+                  {copySuccess ? <Check size={24} /> : <Share2 size={24} />}
+                  <span>{copySuccess ? 'Copié !' : 'Partager'}</span>
                 </button>
              </div>
            </div>
