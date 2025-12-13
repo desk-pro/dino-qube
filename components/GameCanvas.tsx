@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { GameStatus, Obstacle, Cloud } from '../types';
+import { GameStatus, Obstacle, Cloud, Particle } from '../types';
 import {
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
@@ -27,7 +27,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
   const requestRef = useRef<number>(0);
   const scoreRef = useRef<number>(0);
   
-  // Game State Refs (for performance in loop)
+  // Game State Refs
   const statusRef = useRef<GameStatus>(GameStatus.START);
   const playerRef = useRef({
     x: PLAYER_START_X,
@@ -38,6 +38,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
   });
   const obstaclesRef = useRef<Obstacle[]>([]);
   const cloudsRef = useRef<Cloud[]>([]);
+  const particlesRef = useRef<Particle[]>([]);
   const gameSpeedRef = useRef<number>(INITIAL_SPEED);
   const frameCountRef = useRef<number>(0);
 
@@ -46,11 +47,26 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
   const [currentScore, setCurrentScore] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
 
-  // Sound Effects (simulated with AudioContext later if needed, but keeping simple for now)
   const playSound = (type: 'jump' | 'score' | 'hit') => {
     if (isMuted) return;
-    // Simple Web Audio API beep implementation could go here
-    // For now, we focus on visuals
+    // Audio implementation placeholder
+  };
+
+  // --- Particle System ---
+  const spawnParticles = (x: number, y: number, count: number, type: 'dust' | 'impact') => {
+    for (let i = 0; i < count; i++) {
+      particlesRef.current.push({
+        id: Date.now() + Math.random(),
+        x: x,
+        y: y,
+        vx: (Math.random() - 0.5) * (type === 'impact' ? 5 : 2),
+        vy: (Math.random() - 1) * (type === 'impact' ? 5 : 2),
+        life: 1.0,
+        decay: 0.02 + Math.random() * 0.03,
+        size: type === 'impact' ? 3 + Math.random() * 3 : 2 + Math.random() * 2,
+        color: type === 'impact' ? '#94a3b8' : '#cbd5e1'
+      });
+    }
   };
 
   const spawnObstacle = () => {
@@ -58,18 +74,29 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     let type: Obstacle['type'] = 'CACTUS_SMALL';
     let width = 30;
     let height = 50;
+    let y = GROUND_Y - height;
 
-    if (typeChance > 0.7) {
+    // Bird Spawn Logic (only after score > 150)
+    if (scoreRef.current > 150 && Math.random() > 0.7) {
+        type = 'BIRD';
+        width = 40;
+        height = 30;
+        // Two heights: Low (jump over), Mid (tricky jump)
+        const isHigh = Math.random() > 0.5; 
+        y = isHigh 
+          ? GROUND_Y - PLAYER_HEIGHT - 10  // Mid-air (requires clean jump)
+          : GROUND_Y - 50; // Low (standard jump)
+    } else if (typeChance > 0.7) {
       type = 'CACTUS_LARGE';
       width = 40;
       height = 70;
-    } 
-    // Add Birds later for difficulty
+      y = GROUND_Y - height;
+    }
 
     const obstacle: Obstacle = {
       id: Date.now() + Math.random(),
       x: CANVAS_WIDTH + Math.random() * 100,
-      y: GROUND_Y - height,
+      y: y,
       width,
       height,
       type
@@ -96,6 +123,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     gameSpeedRef.current = INITIAL_SPEED;
     obstaclesRef.current = [];
     cloudsRef.current = [];
+    particlesRef.current = [];
     playerRef.current = {
       x: PLAYER_START_X,
       y: GROUND_Y - PLAYER_HEIGHT,
@@ -118,6 +146,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
       playerRef.current.vy = JUMP_FORCE;
       playerRef.current.isJumping = true;
       playSound('jump');
+      // Jump Dust
+      spawnParticles(playerRef.current.x + PLAYER_WIDTH / 2, playerRef.current.y + PLAYER_HEIGHT, 5, 'dust');
     }
   }, []);
 
@@ -133,9 +163,18 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
 
     // Ground collision
     if (player.y >= GROUND_Y - PLAYER_HEIGHT) {
+      if (player.isJumping) {
+        // Just landed
+        spawnParticles(player.x + PLAYER_WIDTH / 2, GROUND_Y, 8, 'dust');
+      }
       player.y = GROUND_Y - PLAYER_HEIGHT;
       player.vy = 0;
       player.isJumping = false;
+      
+      // Running particles
+      if (frameCountRef.current % 8 === 0) {
+         spawnParticles(player.x + 10, GROUND_Y, 2, 'dust');
+      }
     }
 
     // Speed progression
@@ -153,7 +192,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     }
 
     // Obstacles
-    // Spawn logic
     const lastObstacle = obstaclesRef.current[obstaclesRef.current.length - 1];
     if (!lastObstacle || (CANVAS_WIDTH - lastObstacle.x > OBSTACLE_SPAWN_MIN_GAP + Math.random() * OBSTACLE_SPAWN_MAX_GAP)) {
       spawnObstacle();
@@ -162,8 +200,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     obstaclesRef.current.forEach(obs => {
       obs.x -= gameSpeedRef.current;
     });
-
-    // Remove off-screen obstacles
     obstaclesRef.current = obstaclesRef.current.filter(obs => obs.x + obs.width > -100);
 
     // Clouds
@@ -173,8 +209,16 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     });
     cloudsRef.current = cloudsRef.current.filter(cloud => cloud.x > -100);
 
+    // Particles
+    particlesRef.current.forEach(p => {
+      p.x -= gameSpeedRef.current; // Move with world
+      p.x += p.vx; // Own velocity
+      p.y += p.vy;
+      p.life -= p.decay;
+    });
+    particlesRef.current = particlesRef.current.filter(p => p.life > 0);
+
     // Collision Detection
-    // Shrink hitboxes slightly for fair play
     const hitboxPadding = 8;
     const playerHitbox = {
       x: player.x + hitboxPadding,
@@ -184,12 +228,21 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     };
 
     for (const obs of obstaclesRef.current) {
-      const obsHitbox = {
+      let obsHitbox = {
         x: obs.x + 4,
         y: obs.y + 4,
         width: obs.width - 8,
         height: obs.height - 8
       };
+
+      if (obs.type === 'BIRD') {
+        obsHitbox = {
+            x: obs.x + 2,
+            y: obs.y + 10,
+            width: obs.width - 4,
+            height: obs.height - 14
+        }
+      }
 
       if (
         playerHitbox.x < obsHitbox.x + obsHitbox.width &&
@@ -202,8 +255,63 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
         setDisplayStatus(GameStatus.GAME_OVER);
         onGameOver(Math.floor(scoreRef.current));
         playSound('hit');
+        // Impact particles
+        spawnParticles(player.x + PLAYER_WIDTH/2, player.y + PLAYER_HEIGHT/2, 20, 'impact');
       }
     }
+  };
+
+  // --- Draw Helpers ---
+
+  const drawBird = (ctx: CanvasRenderingContext2D, obs: Obstacle) => {
+    ctx.save();
+    ctx.translate(obs.x, obs.y);
+    
+    const flap = Math.floor(frameCountRef.current / 10) % 2 === 0;
+    
+    ctx.fillStyle = '#1e293b'; // slate-800
+    
+    // Body
+    ctx.beginPath();
+    ctx.ellipse(20, 15, 12, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Head
+    ctx.beginPath();
+    ctx.arc(8, 12, 6, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Beak
+    ctx.fillStyle = '#f59e0b'; // amber-500
+    ctx.beginPath();
+    ctx.moveTo(3, 12);
+    ctx.lineTo(-2, 14);
+    ctx.lineTo(3, 16);
+    ctx.fill();
+
+    // Eye
+    ctx.fillStyle = 'white';
+    ctx.beginPath();
+    ctx.arc(6, 10, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wings
+    ctx.fillStyle = '#334155'; // slate-700
+    ctx.beginPath();
+    if (flap) {
+        // Wings up
+        ctx.moveTo(15, 10);
+        ctx.lineTo(25, -5);
+        ctx.lineTo(32, 10);
+    } else {
+        // Wings down
+        ctx.moveTo(15, 10);
+        ctx.lineTo(25, 25);
+        ctx.lineTo(32, 10);
+    }
+    ctx.fill();
+
+    ctx.restore();
   };
 
   const drawBoy = (ctx: CanvasRenderingContext2D, x: number, y: number, isJumping: boolean, frame: number) => {
@@ -217,7 +325,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     // Color Palette
     const skinColor = '#FFD1AA';
     const shirtColor = '#3B82F6'; // Blue-500
-    const shortsColor = '#1F2937'; // Gray-800
     const shoeColor = '#DC2626'; // Red-600
 
     // Legs
@@ -240,11 +347,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
 
     // Shoes
     ctx.fillStyle = shoeColor;
-    // Left Shoe
     ctx.beginPath();
     ctx.ellipse(15 + (isJumping ? -5 : legOffset * 3), 80, 6, 3, 0, 0, Math.PI * 2);
     ctx.fill();
-    // Right Shoe
     ctx.beginPath();
     ctx.ellipse(29 - (isJumping ? 5 : legOffset * 3), 80, 6, 3, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -274,26 +379,21 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     ctx.lineTo(36, 15);
     ctx.lineTo(8, 15);
     ctx.fill();
-    // Little spike
     ctx.beginPath();
     ctx.moveTo(22, 0);
     ctx.lineTo(28, 5);
     ctx.lineTo(16, 5);
     ctx.fill();
 
-    // Glasses (The distinctive feature)
+    // Glasses
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
-    // Left lens
     ctx.strokeRect(14, 12, 6, 4);
-    // Right lens
     ctx.strokeRect(24, 12, 6, 4);
-    // Bridge
     ctx.beginPath();
     ctx.moveTo(20, 14);
     ctx.lineTo(24, 14);
     ctx.stroke();
-    // Temples (arms of glasses)
     ctx.beginPath();
     ctx.moveTo(14, 13);
     ctx.lineTo(8, 11);
@@ -336,27 +436,43 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     ctx.stroke();
 
     // Draw Obstacles
-    ctx.fillStyle = '#16a34a'; // green-600 for cactus
     obstaclesRef.current.forEach(obs => {
-      // Simple Cactus shape
-      const w = obs.width;
-      const h = obs.height;
-      const x = obs.x;
-      const y = obs.y;
-      
-      // Main stem
-      ctx.fillRect(x + w * 0.3, y, w * 0.4, h);
-      // Left arm
-      ctx.fillRect(x, y + h * 0.3, w * 0.3, h * 0.1);
-      ctx.fillRect(x, y + h * 0.1, w * 0.1, h * 0.3);
-      // Right arm
-      ctx.fillRect(x + w * 0.7, y + h * 0.4, w * 0.3, h * 0.1);
-      ctx.fillRect(x + w * 0.9, y + h * 0.2, w * 0.1, h * 0.3);
+      if (obs.type === 'BIRD') {
+        drawBird(ctx, obs);
+      } else {
+        // Cactus
+        ctx.fillStyle = '#16a34a'; // green-600
+        const w = obs.width;
+        const h = obs.height;
+        const x = obs.x;
+        const y = obs.y;
+        ctx.fillRect(x + w * 0.3, y, w * 0.4, h);
+        ctx.fillRect(x, y + h * 0.3, w * 0.3, h * 0.1);
+        ctx.fillRect(x, y + h * 0.1, w * 0.1, h * 0.3);
+        ctx.fillRect(x + w * 0.7, y + h * 0.4, w * 0.3, h * 0.1);
+        ctx.fillRect(x + w * 0.9, y + h * 0.2, w * 0.1, h * 0.3);
+      }
+    });
+
+    // Draw Particles
+    particlesRef.current.forEach(p => {
+        ctx.save();
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     });
 
     // Draw Player
     const p = playerRef.current;
-    drawBoy(ctx, p.x, p.y, p.isJumping, frameCountRef.current);
+    if (statusRef.current !== GameStatus.GAME_OVER) {
+       drawBoy(ctx, p.x, p.y, p.isJumping, frameCountRef.current);
+    } else {
+        // Draw him knocked over or just same (for now same)
+        drawBoy(ctx, p.x, p.y, p.isJumping, frameCountRef.current);
+    }
   };
 
   const loop = () => {
@@ -368,19 +484,17 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
   useEffect(() => {
     requestRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(requestRef.current);
-  }, []); // Run once on mount
+  }, []);
 
   // Input handling
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space' || e.code === 'ArrowUp') {
-        e.preventDefault(); // Prevent scrolling
+        e.preventDefault();
         jump();
       }
     };
     const handleTouchStart = (e: TouchEvent) => {
-       // Prevent default only if it's strictly game area interaction if needed, 
-       // but here we generally want to jump on tap.
        jump();
     };
 
@@ -393,7 +507,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
   }, [jump]);
 
 
-  // Helper for sharing
   const handleShare = async () => {
     const text = `Je viens de faire ${currentScore} points sur Le Garçon à Lunettes ! 🏃‍♂️💨 Essaye de me battre !`;
     

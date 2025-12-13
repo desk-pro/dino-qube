@@ -24,6 +24,18 @@ export interface Cloud {
   scale: number;
 }
 
+export interface Particle {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number; // 0 to 1
+  decay: number;
+  size: number;
+  color: string;
+}
+
 export interface GameState {
   status: GameStatus;
   score: number;
