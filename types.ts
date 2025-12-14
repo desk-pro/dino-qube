@@ -42,6 +42,7 @@ export interface Particle {
   decay: number;
   size: number;
   color: string;
+  active: boolean; // Optimization: pooling flag
 }
 
 export interface GameState {

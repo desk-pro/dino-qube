@@ -22,10 +22,27 @@ interface GameCanvasProps {
   highScore: number;
 }
 
+const MAX_PARTICLES = 60;
+const TARGET_FPS = 60;
+const FRAME_TIME = 1000 / TARGET_FPS;
+
 const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>(0);
   const scoreRef = useRef<number>(0);
+  const lastTimeRef = useRef<number>(0);
+  const onGameOverRef = useRef(onGameOver);
+  const highScoreRef = useRef(highScore); // Ref to track latest highscore in loop
+
+  // Keep onGameOver fresh in the loop
+  useEffect(() => {
+    onGameOverRef.current = onGameOver;
+  }, [onGameOver]);
+
+  // Keep highScore fresh in the loop
+  useEffect(() => {
+    highScoreRef.current = highScore;
+  }, [highScore]);
   
   // Game State Refs
   const statusRef = useRef<GameStatus>(GameStatus.START);
@@ -38,7 +55,21 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
   });
   const obstaclesRef = useRef<Obstacle[]>([]);
   const cloudsRef = useRef<Cloud[]>([]);
-  const particlesRef = useRef<Particle[]>([]);
+  // Initialize particle pool with inactive particles
+  const particlesRef = useRef<Particle[]>(
+    Array.from({ length: MAX_PARTICLES }, (_, i) => ({
+      id: i,
+      x: 0,
+      y: 0,
+      vx: 0,
+      vy: 0,
+      life: 0,
+      decay: 0,
+      size: 0,
+      color: '#000',
+      active: false
+    }))
+  );
   const starsRef = useRef<Star[]>([]);
   const gameSpeedRef = useRef<number>(INITIAL_SPEED);
   const frameCountRef = useRef<number>(0);
@@ -54,31 +85,37 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
   
   // Initialize Stars (for night time)
   useEffect(() => {
-    for(let i=0; i<50; i++) {
-        starsRef.current.push({
-            id: i,
-            x: Math.random() * CANVAS_WIDTH,
-            y: Math.random() * (GROUND_Y - 50),
-            opacity: Math.random(),
-            size: Math.random() * 2
-        });
+    if (starsRef.current.length === 0) {
+      for(let i=0; i<50; i++) {
+          starsRef.current.push({
+              id: i,
+              x: Math.random() * CANVAS_WIDTH,
+              y: Math.random() * (GROUND_Y - 50),
+              opacity: Math.random(),
+              size: Math.random() * 2
+          });
+      }
     }
   }, []);
 
-  // --- Particle System ---
+  // --- Particle System (Object Pooling) ---
   const spawnParticles = (x: number, y: number, count: number, type: 'dust' | 'impact') => {
-    for (let i = 0; i < count; i++) {
-      particlesRef.current.push({
-        id: Date.now() + Math.random(),
-        x: x,
-        y: y,
-        vx: (Math.random() - 0.5) * (type === 'impact' ? 5 : 2),
-        vy: (Math.random() - 1) * (type === 'impact' ? 5 : 2),
-        life: 1.0,
-        decay: 0.02 + Math.random() * 0.03,
-        size: type === 'impact' ? 3 + Math.random() * 3 : 2 + Math.random() * 2,
-        color: type === 'impact' ? '#94a3b8' : '#cbd5e1'
-      });
+    let spawnedCount = 0;
+    for (let i = 0; i < particlesRef.current.length; i++) {
+      if (spawnedCount >= count) break;
+      const p = particlesRef.current[i];
+      if (!p.active) {
+        p.active = true;
+        p.x = x;
+        p.y = y;
+        p.vx = (Math.random() - 0.5) * (type === 'impact' ? 5 : 2);
+        p.vy = (Math.random() - 1) * (type === 'impact' ? 5 : 2);
+        p.life = 1.0;
+        p.decay = 0.02 + Math.random() * 0.03;
+        p.size = type === 'impact' ? 3 + Math.random() * 3 : 2 + Math.random() * 2;
+        p.color = type === 'impact' ? '#94a3b8' : '#cbd5e1';
+        spawnedCount++;
+      }
     }
   };
 
@@ -89,21 +126,18 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     let height = 50;
     let y = GROUND_Y - height;
 
-    // Bird Spawn Logic (only after score > 150)
     if (scoreRef.current > 150 && Math.random() > 0.75) {
         type = 'BIRD';
         width = 40;
         height = 30;
-        // Two heights: Low (jump over), Mid (tricky jump)
         const isHigh = Math.random() > 0.5; 
         y = isHigh 
-          ? GROUND_Y - PLAYER_HEIGHT - 10  // Mid-air (requires clean jump)
-          : GROUND_Y - 50; // Low (standard jump)
+          ? GROUND_Y - PLAYER_HEIGHT - 10 
+          : GROUND_Y - 50;
     } else if (Math.random() > 0.8) {
-        // Rock Logic
         type = 'ROCK';
         width = 40;
-        height = 25; // Low
+        height = 25;
         y = GROUND_Y - height;
     } else if (typeChance > 0.6) {
       type = 'CACTUS_LARGE';
@@ -144,7 +178,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     gameSpeedRef.current = INITIAL_SPEED;
     obstaclesRef.current = [];
     cloudsRef.current = [];
-    particlesRef.current = [];
+    
+    particlesRef.current.forEach(p => p.active = false);
+
     playerRef.current = {
       x: PLAYER_START_X,
       y: GROUND_Y - PLAYER_HEIGHT,
@@ -166,77 +202,104 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     if (!playerRef.current.isJumping) {
       playerRef.current.vy = JUMP_FORCE;
       playerRef.current.isJumping = true;
-      // Jump Dust
       spawnParticles(playerRef.current.x + PLAYER_WIDTH / 2, playerRef.current.y + PLAYER_HEIGHT, 5, 'dust');
     }
   }, []);
 
-  const update = () => {
+  // Update loop now takes a Delta Time (dt) multiplier
+  // dt = 1.0 means running at exactly 60fps
+  // dt = 0.5 means running at 120fps (so we move half as much per frame)
+  const update = (dt: number) => {
     if (statusRef.current !== GameStatus.PLAYING) return;
 
     const player = playerRef.current;
-    frameCountRef.current++;
     
-    // Cycle Day/Night (Complete cycle every 3000 frames)
+    // Scale frame count by time for animations
+    frameCountRef.current += 1 * dt;
+    
     cycleRef.current = (frameCountRef.current % 3000) / 3000;
 
     // Physics
-    player.vy += GRAVITY;
-    player.y += player.vy;
+    player.vy += GRAVITY * dt;
+    player.y += player.vy * dt;
 
     // Ground collision
     if (player.y >= GROUND_Y - PLAYER_HEIGHT) {
       if (player.isJumping) {
-        // Just landed
         spawnParticles(player.x + PLAYER_WIDTH / 2, GROUND_Y, 8, 'dust');
       }
       player.y = GROUND_Y - PLAYER_HEIGHT;
       player.vy = 0;
       player.isJumping = false;
       
-      // Running particles
-      if (frameCountRef.current % 8 === 0) {
+      if (Math.floor(frameCountRef.current) % 8 === 0) {
          spawnParticles(player.x + 10, GROUND_Y, 2, 'dust');
       }
     }
 
     // Speed progression
     if (gameSpeedRef.current < MAX_SPEED) {
-      gameSpeedRef.current += SPEED_INCREMENT;
+      gameSpeedRef.current += SPEED_INCREMENT * dt;
     }
 
     // Score
-    scoreRef.current += 0.1 * (gameSpeedRef.current / INITIAL_SPEED);
+    scoreRef.current += 0.1 * (gameSpeedRef.current / INITIAL_SPEED) * dt;
+    // We update UI state for score; safe to use stale currentScore in comparison as React dedupes state updates
     if (Math.floor(scoreRef.current) > currentScore) {
       setCurrentScore(Math.floor(scoreRef.current));
     }
 
-    // Obstacles
+    // Obstacles spawning
     const lastObstacle = obstaclesRef.current[obstaclesRef.current.length - 1];
     if (!lastObstacle || (CANVAS_WIDTH - lastObstacle.x > OBSTACLE_SPAWN_MIN_GAP + Math.random() * OBSTACLE_SPAWN_MAX_GAP)) {
       spawnObstacle();
     }
 
-    obstaclesRef.current.forEach(obs => {
-      obs.x -= gameSpeedRef.current;
-    });
-    obstaclesRef.current = obstaclesRef.current.filter(obs => obs.x + obs.width > -100);
+    // Update Obstacles with dt
+    let activeObsCount = 0;
+    for (let i = 0; i < obstaclesRef.current.length; i++) {
+        const obs = obstaclesRef.current[i];
+        obs.x -= gameSpeedRef.current * dt;
+        
+        if (obs.x + obs.width > -100) {
+            if (i !== activeObsCount) {
+                obstaclesRef.current[activeObsCount] = obs;
+            }
+            activeObsCount++;
+        }
+    }
+    obstaclesRef.current.length = activeObsCount;
 
-    // Clouds
-    if (Math.random() < 0.01) spawnCloud();
-    cloudsRef.current.forEach(cloud => {
-      cloud.x -= cloud.speed;
-    });
-    cloudsRef.current = cloudsRef.current.filter(cloud => cloud.x > -100);
+    // Clouds spawning
+    if (Math.random() < 0.01 * dt) spawnCloud(); // Adjust spawn rate by dt too
+    
+    // Update Clouds with dt
+    let activeCloudCount = 0;
+    for (let i = 0; i < cloudsRef.current.length; i++) {
+        const cloud = cloudsRef.current[i];
+        cloud.x -= cloud.speed * dt;
+        if (cloud.x > -100) {
+             if (i !== activeCloudCount) {
+                 cloudsRef.current[activeCloudCount] = cloud;
+             }
+             activeCloudCount++;
+        }
+    }
+    cloudsRef.current.length = activeCloudCount;
 
-    // Particles
-    particlesRef.current.forEach(p => {
-      p.x -= gameSpeedRef.current; // Move with world
-      p.x += p.vx; // Own velocity
-      p.y += p.vy;
-      p.life -= p.decay;
-    });
-    particlesRef.current = particlesRef.current.filter(p => p.life > 0);
+    // Update Particles with dt
+    for (let i = 0; i < particlesRef.current.length; i++) {
+        const p = particlesRef.current[i];
+        if (p.active) {
+            p.x -= gameSpeedRef.current * dt;
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.life -= p.decay * dt;
+            if (p.life <= 0) {
+                p.active = false;
+            }
+        }
+    }
 
     // Collision Detection
     const hitboxPadding = 8;
@@ -278,10 +341,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
         playerHitbox.y + playerHitbox.height > obsHitbox.y
       ) {
         // Crash
-        
-        // Calculate record status BEFORE updating parent/highScore prop
         const finalScore = Math.floor(scoreRef.current);
-        if (finalScore > highScore) {
+        
+        // Fix: Use ref to check against the latest high score, not the stale closure value
+        if (finalScore > highScoreRef.current) {
             setIsNewRecord(true);
         } else {
             setIsNewRecord(false);
@@ -289,17 +352,15 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
 
         statusRef.current = GameStatus.GAME_OVER;
         setDisplayStatus(GameStatus.GAME_OVER);
-        onGameOver(finalScore);
+        // Safely call the ref callback
+        onGameOverRef.current(finalScore);
         
-        // Impact particles
         spawnParticles(player.x + PLAYER_WIDTH/2, player.y + PLAYER_HEIGHT/2, 20, 'impact');
       }
     }
   };
 
   // --- Draw Helpers ---
-  
-  // Interpolate two hex colors
   const lerpColor = (a: string, b: string, amount: number) => {
     const ah = parseInt(a.replace(/#/g, ''), 16),
       ar = ah >> 16, ag = ah >> 8 & 0xff, ab = ah & 0xff,
@@ -311,13 +372,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     return '#' + ((1 << 24) + (rr << 16) + (rg << 8) + rb | 0).toString(16).slice(1);
   };
 
-  // Get Sky Color based on cycle
   const getSkyColor = (t: number) => {
-      // 0.0 - 0.3: Day (#38bdf8)
-      // 0.3 - 0.4: Sunset (#fdba74)
-      // 0.4 - 0.5: Dusk (#1e293b)
-      // 0.5 - 0.9: Night (#0f172a)
-      // 0.9 - 1.0: Sunrise (#fcd34d)
       if (t < 0.3) return '#38bdf8';
       if (t < 0.4) return lerpColor('#38bdf8', '#fdba74', (t - 0.3) * 10);
       if (t < 0.5) return lerpColor('#fdba74', '#0f172a', (t - 0.4) * 10);
@@ -328,73 +383,54 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
   const drawRock = (ctx: CanvasRenderingContext2D, obs: Obstacle) => {
     ctx.save();
     ctx.translate(obs.x, obs.y);
-    
-    ctx.fillStyle = '#64748b'; // slate-500
+    ctx.fillStyle = '#64748b'; 
     ctx.beginPath();
     ctx.moveTo(0, obs.height);
     ctx.lineTo(5, 5);
     ctx.lineTo(obs.width - 5, 2);
     ctx.lineTo(obs.width, obs.height);
     ctx.fill();
-    
-    // texture
     ctx.fillStyle = '#475569';
     ctx.beginPath();
     ctx.arc(10, 15, 3, 0, Math.PI * 2);
     ctx.arc(25, 10, 4, 0, Math.PI * 2);
     ctx.fill();
-    
     ctx.restore();
   };
 
   const drawBird = (ctx: CanvasRenderingContext2D, obs: Obstacle) => {
     ctx.save();
     ctx.translate(obs.x, obs.y);
-    
     const flap = Math.floor(frameCountRef.current / 10) % 2 === 0;
-    
-    ctx.fillStyle = '#1e293b'; // slate-800
-    
-    // Body
+    ctx.fillStyle = '#1e293b'; 
     ctx.beginPath();
     ctx.ellipse(20, 15, 12, 6, 0, 0, Math.PI * 2);
     ctx.fill();
-    
-    // Head
     ctx.beginPath();
     ctx.arc(8, 12, 6, 0, Math.PI * 2);
     ctx.fill();
-    
-    // Beak
-    ctx.fillStyle = '#f59e0b'; // amber-500
+    ctx.fillStyle = '#f59e0b';
     ctx.beginPath();
     ctx.moveTo(3, 12);
     ctx.lineTo(-2, 14);
     ctx.lineTo(3, 16);
     ctx.fill();
-
-    // Eye
     ctx.fillStyle = 'white';
     ctx.beginPath();
     ctx.arc(6, 10, 1.5, 0, Math.PI * 2);
     ctx.fill();
-
-    // Wings
-    ctx.fillStyle = '#334155'; // slate-700
+    ctx.fillStyle = '#334155';
     ctx.beginPath();
     if (flap) {
-        // Wings up
         ctx.moveTo(15, 10);
         ctx.lineTo(25, -5);
         ctx.lineTo(32, 10);
     } else {
-        // Wings down
         ctx.moveTo(15, 10);
         ctx.lineTo(25, 25);
         ctx.lineTo(32, 10);
     }
     ctx.fill();
-
     ctx.restore();
   };
 
@@ -402,14 +438,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     ctx.save();
     ctx.translate(x, y);
 
-    // --- CHARACTER DESIGN ---
     const COLORS = {
       SKIN: '#FFD1AA',
-      SHIRT: '#39FF14', // NEON GREEN
-      SHORTS: '#C2B280', // Beige/Khaki
-      SOCKS: '#111827',  // Black socks
-      SHOES: '#1F2937', // Dark Grey shoes
-      HAIR: '#5D4037',  // Medium Brown
+      SHIRT: '#39FF14',
+      SHORTS: '#C2B280',
+      SOCKS: '#111827',
+      SHOES: '#1F2937',
+      HAIR: '#5D4037',
       GLASSES: '#000000',
       EYES: '#000000'
     };
@@ -423,13 +458,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     const rightKneeX = (CENTER_X + 4) + (isJumping ? 10 : -legOffset * 2);
     const rightFootX = (CENTER_X + 4) + (isJumping ? 5 : -legOffset * 3);
 
-    // Legs
     ctx.strokeStyle = COLORS.SKIN;
     ctx.lineWidth = 4;
     ctx.beginPath(); ctx.moveTo(CENTER_X - 4, 50); ctx.lineTo(leftKneeX, 70); ctx.lineTo(leftFootX, 78); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(CENTER_X + 4, 50); ctx.lineTo(rightKneeX, 70); ctx.lineTo(rightFootX, 78); ctx.stroke();
 
-    // Socks & Shoes
     ctx.fillStyle = COLORS.SOCKS;
     ctx.beginPath(); ctx.rect(leftFootX - 2, 74, 4, 6); ctx.fill();
     ctx.beginPath(); ctx.rect(rightFootX - 2, 74, 4, 6); ctx.fill();
@@ -437,29 +470,24 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     ctx.beginPath(); ctx.ellipse(leftFootX, 80, 6, 3, 0, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.ellipse(rightFootX, 80, 6, 3, 0, 0, Math.PI * 2); ctx.fill();
 
-    // Body
     ctx.fillStyle = COLORS.SHORTS;
     ctx.fillRect(CENTER_X - 7, 45, 14, 12); 
     ctx.fillStyle = COLORS.SHIRT;
     ctx.fillRect(CENTER_X - 7, 25, 14, 25);
     
-    // Arms
     ctx.strokeStyle = COLORS.SKIN;
     ctx.lineWidth = 3; 
     ctx.beginPath(); ctx.moveTo(CENTER_X, 30); ctx.lineTo(CENTER_X + 13, 45 - legOffset); ctx.stroke();
 
-    // Head
     ctx.fillStyle = COLORS.SKIN;
     ctx.beginPath(); ctx.arc(CENTER_X, 15, 11, 0, Math.PI * 2); ctx.fill();
 
-    // Hair
     ctx.fillStyle = COLORS.HAIR;
     ctx.beginPath();
     ctx.arc(CENTER_X, 13, 11, Math.PI + 0.5, Math.PI * 2 - 0.5);
     ctx.lineTo(CENTER_X + 11, 18); ctx.lineTo(CENTER_X + 10, 12);
     ctx.lineTo(CENTER_X, 5); ctx.lineTo(CENTER_X - 10, 12); ctx.lineTo(CENTER_X - 11, 18); ctx.fill();
 
-    // Glasses
     ctx.strokeStyle = COLORS.GLASSES;
     ctx.lineWidth = 2; 
     ctx.beginPath(); ctx.arc(CENTER_X - 5, 15, 5.5, 0, Math.PI * 2); ctx.stroke();
@@ -471,7 +499,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(CENTER_X - 10, 14); ctx.lineTo(CENTER_X - 11, 12); ctx.stroke();
 
-    // Smile
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = '#8B5A2B';
     ctx.beginPath(); ctx.arc(CENTER_X, 21, 4, 0.2, Math.PI - 0.2); ctx.stroke();
@@ -485,12 +512,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // -- Background --
     const skyColor = getSkyColor(cycleRef.current);
     ctx.fillStyle = skyColor;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Stars (Visible at night)
     if (cycleRef.current > 0.45 && cycleRef.current < 0.95) {
         ctx.fillStyle = 'white';
         starsRef.current.forEach(star => {
@@ -502,7 +527,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
         ctx.globalAlpha = 1;
     }
 
-    // -- Clouds --
     ctx.fillStyle = 'rgba(255, 255, 255, 0.6)'; 
     cloudsRef.current.forEach(cloud => {
       ctx.beginPath();
@@ -512,7 +536,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
       ctx.fill();
     });
 
-    // -- Ground --
     ctx.beginPath();
     ctx.strokeStyle = '#334155';
     ctx.lineWidth = 2;
@@ -520,19 +543,16 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     ctx.lineTo(CANVAS_WIDTH, GROUND_Y);
     ctx.stroke();
     
-    // Ground Fill
     ctx.fillStyle = '#f1f5f9';
     ctx.fillRect(0, GROUND_Y, CANVAS_WIDTH, CANVAS_HEIGHT - GROUND_Y);
 
-    // -- Obstacles --
     obstaclesRef.current.forEach(obs => {
       if (obs.type === 'BIRD') {
         drawBird(ctx, obs);
       } else if (obs.type === 'ROCK') {
         drawRock(ctx, obs);
       } else {
-        // Cactus
-        ctx.fillStyle = '#16a34a'; // green-600
+        ctx.fillStyle = '#16a34a'; 
         const w = obs.width;
         const h = obs.height;
         const x = obs.x;
@@ -545,24 +565,36 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
       }
     });
 
-    // -- Particles --
     particlesRef.current.forEach(p => {
-        ctx.save();
-        ctx.globalAlpha = p.life;
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        if (p.active) {
+          ctx.save();
+          ctx.globalAlpha = p.life;
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
     });
 
-    // -- Player --
     const p = playerRef.current;
     drawBoy(ctx, p.x, p.y, p.isJumping, frameCountRef.current);
   };
 
-  const loop = () => {
-    update();
+  const loop = (time: number) => {
+    // Initializing lastTimeRef to start fresh
+    if (lastTimeRef.current === 0) {
+        lastTimeRef.current = time;
+    }
+    const deltaTime = time - lastTimeRef.current;
+    lastTimeRef.current = time;
+    
+    // Normalize delta time relative to 60fps (16.66ms per frame)
+    // dt = 1.0 means we are running exactly at 60fps
+    // Cap at 4 (approx 15fps) to prevent spiraling physics on lag spikes
+    const dt = Math.min(deltaTime / FRAME_TIME, 4);
+
+    update(dt);
     draw();
     requestRef.current = requestAnimationFrame(loop);
   };
@@ -572,7 +604,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     return () => cancelAnimationFrame(requestRef.current);
   }, []);
 
-  // Input handling
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space' || e.code === 'ArrowUp') {
@@ -581,12 +612,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
       }
     };
     
-    // Allow touch on the window for better mobile response
     const handleTouchStart = (e: TouchEvent) => {
-       // Only jump if not interacting with a button
        const target = e.target as HTMLElement;
        if (target.tagName !== 'BUTTON') {
-          e.preventDefault(); // prevent scroll
+          e.preventDefault(); 
           jump();
        }
     };
@@ -615,7 +644,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
         console.log('Share canceled or failed:', err);
       }
     } else {
-      // Fallback: Copy to clipboard
       try {
         await navigator.clipboard.writeText(`${text} ${window.location.href}`);
         setCopySuccess(true);

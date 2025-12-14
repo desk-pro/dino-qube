@@ -45,7 +45,7 @@ function App() {
       </main>
 
       <footer className="mt-8 text-slate-500 text-sm text-center max-w-md mx-auto">
-        <p>Un clone du Dino Chrome recréé avec React & Canvas.</p>
+        <p>Un clone du Dino Chrome recréé avec ❤️ par PLS</p>
         <p className="mt-2 text-xs opacity-50">Partage ton score avec tes amis pour voir qui est le meilleur !</p>
       </footer>
     </div>
