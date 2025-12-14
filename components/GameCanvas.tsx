@@ -109,9 +109,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
 
   const spawnObstacle = () => {
     const r = Math.random();
-    // Par défaut, c'est un Bonsaï (petit ou grand)
-    // "CACTUS_SMALL" devient "BONSAI_SMALL"
-    let type: any = 'BONSAI_SMALL'; // Cast en any pour éviter les erreurs TS si le type n'est pas mis à jour
+    let type: any = 'BONSAI_SMALL'; 
     let width = 35;
     let height = 45;
     let y = GROUND_Y - height;
@@ -125,7 +123,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
         width = 50;
         height = 65; // Assez grand
         y = GROUND_Y - height;
-    } else if (scoreRef.current > 150 && r > 0.80) {
+    } else if (scoreRef.current > 150 && r > 0.82) {
         // Oiseau
         type = 'BIRD';
         width = 40;
@@ -134,17 +132,25 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
         y = isHigh 
           ? GROUND_Y - PLAYER_HEIGHT - 10 
           : GROUND_Y - 50;
-    } else if (r > 0.85) {
+    } else if (r > 0.88) {
         // Rocher
         type = 'ROCK';
         width = 40;
         height = 25;
         y = GROUND_Y - height;
     } else if (r > 0.5) {
-        // Grand Bonsaï
+        // Grand Bonsaï - Avec variation de taille aléatoire
         type = 'BONSAI_LARGE';
-        width = 45;
-        height = 65;
+        const scale = 0.85 + Math.random() * 0.4; // Échelle de 0.85 à 1.25
+        width = 45 * scale;
+        height = 65 * scale;
+        y = GROUND_Y - height;
+    } else {
+        // Petit Bonsaï (Défaut) - Avec variation de taille aléatoire
+        type = 'BONSAI_SMALL';
+        const scale = 0.85 + Math.random() * 0.4; // Échelle de 0.85 à 1.25
+        width = 35 * scale;
+        height = 45 * scale;
         y = GROUND_Y - height;
     }
 
@@ -396,7 +402,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     ctx.restore();
   };
 
-  // NOUVEAU : Dessin du Bonsaï
+  // Dessin du Bonsaï dynamique (s'adapte à w et h)
   const drawBonsai = (ctx: CanvasRenderingContext2D, obs: Obstacle) => {
     ctx.save();
     ctx.translate(obs.x, obs.y);
@@ -404,39 +410,44 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     const w = obs.width;
     const h = obs.height;
 
-    // Pot (Céramique sombre)
-    ctx.fillStyle = '#3E2723'; // Dark brown/Blackish
-    const potHeight = 12;
+    // Pot (Céramique sombre) - Hauteur proportionnelle (~20% de la hauteur totale)
+    ctx.fillStyle = '#3E2723'; 
+    const potH = h * 0.2; 
+    
     ctx.beginPath();
     ctx.moveTo(w * 0.2, h); // bas gauche
     ctx.lineTo(w * 0.8, h); // bas droite
-    ctx.lineTo(w * 0.9, h - potHeight); // haut droite
-    ctx.lineTo(w * 0.1, h - potHeight); // haut gauche
+    ctx.lineTo(w * 0.9, h - potH); // haut droite
+    ctx.lineTo(w * 0.1, h - potH); // haut gauche
     ctx.fill();
 
     // Tronc (Tortueux)
     ctx.strokeStyle = '#5D4037';
-    ctx.lineWidth = 4;
+    ctx.lineWidth = w * 0.12; // Largeur de trait relative
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(w * 0.5, h - potHeight);
-    ctx.quadraticCurveTo(w * 0.3, h - potHeight - 10, w * 0.6, h - potHeight - 20);
-    ctx.quadraticCurveTo(w * 0.8, h - potHeight - 30, w * 0.5, h - potHeight - 40);
+    
+    const trunkStart = h - potH;
+    ctx.moveTo(w * 0.5, trunkStart);
+    // Courbes relatives à la largeur et hauteur
+    ctx.quadraticCurveTo(w * 0.3, trunkStart - (h * 0.2), w * 0.6, trunkStart - (h * 0.4));
+    ctx.quadraticCurveTo(w * 0.8, trunkStart - (h * 0.6), w * 0.5, trunkStart - (h * 0.8));
     ctx.stroke();
 
     // Feuillage (Nuages verts)
-    ctx.fillStyle = '#2E7D32'; // Vert bonsaï foncé
+    ctx.fillStyle = '#2E7D32'; 
+    
     // Bas
     ctx.beginPath();
-    ctx.arc(w * 0.3, h - potHeight - 15, 10, 0, Math.PI * 2);
+    ctx.arc(w * 0.3, trunkStart - (h * 0.3), w * 0.25, 0, Math.PI * 2);
     ctx.fill();
     // Milieu
     ctx.beginPath();
-    ctx.arc(w * 0.75, h - potHeight - 25, 12, 0, Math.PI * 2);
+    ctx.arc(w * 0.75, trunkStart - (h * 0.5), w * 0.3, 0, Math.PI * 2);
     ctx.fill();
     // Haut
     ctx.beginPath();
-    ctx.arc(w * 0.5, h - potHeight - 45, 14, 0, Math.PI * 2);
+    ctx.arc(w * 0.5, trunkStart - (h * 0.8), w * 0.35, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
