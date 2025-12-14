@@ -444,7 +444,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
       SHORTS: '#1f2937', // Dark Grey/Slate
       SOCKS: '#111827',
       SHOES: '#1F2937',
-      HAIR: '#5D4037',
+      HAIR: '#5D4037', // Brown
       GLASSES: '#000000',
     };
 
@@ -548,44 +548,58 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     ctx.fillRect(HEAD_X - 6, WAIST_Y, 12, 10);
 
 
-    // --- HEAD ---
+    // --- HEAD (Calvitie style) ---
     // Neck
     ctx.fillStyle = COLORS.SKIN;
     ctx.fillRect(HEAD_X - 2, HEAD_Y + 5, 4, 6);
 
-    // Skull
+    // Face/Head Base
+    ctx.fillStyle = COLORS.SKIN;
     ctx.beginPath();
     ctx.arc(HEAD_X, HEAD_Y, 9, 0, Math.PI * 2);
     ctx.fill();
 
-    // Hair (Balding - Crown on the left/back)
-    ctx.strokeStyle = COLORS.HAIR;
-    ctx.lineWidth = 2;
+    // Hair - Brown, Receding hairline (Calvitie frontale)
+    ctx.fillStyle = COLORS.HAIR;
     ctx.beginPath();
-    // Draw arc from top-left (1.2PI approx) to bottom-left (0.8PI approx)
-    // Actually, drawing slightly more to cover the "back" of the head properly
-    ctx.arc(HEAD_X, HEAD_Y, 9, Math.PI * 0.6, Math.PI * 1.4, false); 
-    ctx.stroke();
-
-    // Nose (Profile view pointing Right)
-    ctx.fillStyle = COLORS.SKIN;
-    ctx.beginPath();
-    ctx.moveTo(HEAD_X + 7, HEAD_Y - 2);
-    ctx.lineTo(HEAD_X + 13, HEAD_Y + 2); // Pointy nose
-    ctx.lineTo(HEAD_X + 7, HEAD_Y + 5);
+    // Start at back-bottom of ear
+    ctx.arc(HEAD_X, HEAD_Y, 9.5, Math.PI * 0.7, Math.PI * 1.7, false);
+    // Cut back in high on the forehead to create receding look
+    // Go to side
+    ctx.quadraticCurveTo(HEAD_X + 7, HEAD_Y - 4, HEAD_X, HEAD_Y - 8); // High hairline point
+    ctx.quadraticCurveTo(HEAD_X - 7, HEAD_Y - 4, HEAD_X - 8, HEAD_Y + 3); 
     ctx.fill();
 
-    // Glasses
+    // Glasses (Black)
     ctx.strokeStyle = COLORS.GLASSES;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 0.3; // Even thinner lines as requested
     ctx.beginPath();
-    ctx.moveTo(HEAD_X + 2, HEAD_Y - 1); // Ear position
-    ctx.lineTo(HEAD_X + 9, HEAD_Y - 1); // To nose
+    // Frame
+    ctx.moveTo(HEAD_X + 2, HEAD_Y - 3);
+    ctx.lineTo(HEAD_X + 9, HEAD_Y - 3);
+    ctx.lineTo(HEAD_X + 9, HEAD_Y + 2);
+    ctx.lineTo(HEAD_X + 2, HEAD_Y + 2);
+    ctx.closePath();
     ctx.stroke();
-    // Lens
-    ctx.fillStyle = 'rgba(0,0,0,0.1)';
-    ctx.fillRect(HEAD_X + 9, HEAD_Y - 3, 2, 5);
-    ctx.strokeRect(HEAD_X + 9, HEAD_Y - 3, 2, 5);
+    // Arm
+    ctx.beginPath();
+    ctx.moveTo(HEAD_X + 2, HEAD_Y - 1);
+    ctx.lineTo(HEAD_X - 2, HEAD_Y - 2); // To ear
+    ctx.stroke();
+
+    // Eye (Dot in middle of glasses)
+    ctx.fillStyle = 'black';
+    ctx.beginPath();
+    ctx.arc(HEAD_X + 6, HEAD_Y - 0.5, 1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Mouth (Horizontal line)
+    ctx.strokeStyle = '#3E2723';
+    ctx.lineWidth = 0.5; // Thinner as requested
+    ctx.beginPath();
+    ctx.moveTo(HEAD_X + 6, HEAD_Y + 5);
+    ctx.lineTo(HEAD_X + 9, HEAD_Y + 5);
+    ctx.stroke();
 
 
     // Right Arm (Foreground - Last to overlap body)
@@ -764,7 +778,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
       />
 
       {/* HUD */}
-      <div className="absolute top-4 right-4 flex gap-4 font-mono font-bold text-slate-700 text-lg md:text-xl select-none">
+      <div className="absolute top-4 right-4 flex gap-4 font-mono font-bold text-slate-700 text-lg md:text-xl select-none z-10">
         <div className="flex items-center gap-2 px-2 py-1 bg-white/50 rounded-md backdrop-blur-sm">
            <span className="text-slate-500 text-sm">HI</span> {highScore.toString().padStart(5, '0')}
         </div>
@@ -775,21 +789,21 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
 
       {/* Start Screen Overlay */}
       {displayStatus === GameStatus.START && (
-        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center text-white p-4 text-center z-10">
-          <div className="bg-white p-5 md:p-8 rounded-xl md:rounded-2xl shadow-2xl text-slate-800 w-[90%] md:w-auto max-w-md animate-fade-in-up">
-            <h1 className="text-2xl md:text-4xl font-extrabold mb-2 text-blue-600">Quentin Qui Court</h1>
-            <p className="text-slate-500 mb-4 md:mb-6 text-sm md:text-base">Évite les obstacles. Cours aussi loin que possible !</p>
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center text-white z-10 p-2">
+          <div className="bg-white/95 p-3 md:p-8 rounded-xl md:rounded-2xl shadow-2xl text-slate-800 w-[90%] md:w-auto max-w-md animate-fade-in-up flex flex-col items-center justify-center">
+            <h1 className="text-xl md:text-4xl font-extrabold mb-1 md:mb-2 text-blue-600 leading-none">Quentin Qui Court</h1>
+            <p className="text-slate-500 mb-2 md:mb-6 text-xs md:text-base leading-tight">Évite les obstacles !</p>
             
-            <div className="flex flex-col gap-3 md:gap-4">
+            <div className="flex flex-col gap-2 md:gap-4 w-full">
               <button 
                 onClick={resetGame}
-                className="flex items-center justify-center gap-2 w-full py-3 md:py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-base md:text-lg transition-transform hover:scale-[1.02] active:scale-[0.98]"
+                className="flex items-center justify-center gap-2 w-full py-2 md:py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm md:text-lg transition-transform hover:scale-[1.02] active:scale-[0.98]"
               >
-                <Play size={20} className="md:w-6 md:h-6" fill="currentColor" />
+                <Play size={16} className="md:w-6 md:h-6" fill="currentColor" />
                 JOUER
               </button>
               
-              <div className="text-xs md:text-sm text-slate-400 mt-1 md:mt-2">
+              <div className="text-[10px] md:text-sm text-slate-400 mt-1 text-center">
                 Appuie pour sauter
               </div>
             </div>
@@ -799,31 +813,31 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
 
       {/* Game Over Overlay */}
       {displayStatus === GameStatus.GAME_OVER && (
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-md flex flex-col items-center justify-center text-white p-4 z-10">
-           <div className="bg-white p-4 md:p-8 rounded-xl md:rounded-2xl shadow-2xl text-slate-800 w-[90%] md:w-auto max-w-sm text-center transform transition-all scale-100">
-             <div className="mb-1 md:mb-2 text-red-500 font-extrabold text-lg md:text-2xl uppercase tracking-widest">Game Over</div>
-             <div className="text-3xl md:text-5xl font-black text-slate-900 mb-3 md:mb-6 font-mono">{currentScore}</div>
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-md flex flex-col items-center justify-center text-white z-10 p-2">
+           <div className="bg-white/95 p-3 md:p-8 rounded-xl md:rounded-2xl shadow-2xl text-slate-800 w-[90%] md:w-auto max-w-sm text-center transform transition-all scale-100 flex flex-col items-center justify-center">
+             <div className="mb-1 text-red-500 font-extrabold text-sm md:text-2xl uppercase tracking-widest leading-none">Game Over</div>
+             <div className="text-3xl md:text-5xl font-black text-slate-900 mb-2 md:mb-6 font-mono leading-tight">{currentScore}</div>
              
              {isNewRecord && currentScore > 0 && (
-               <div className="mb-3 md:mb-6 flex items-center justify-center gap-2 text-yellow-600 font-bold bg-yellow-100 py-1 md:py-2 px-2 rounded-lg border border-yellow-200 text-sm md:text-base">
-                 <Trophy size={16} className="md:w-5 md:h-5" fill="currentColor" /> Nouveau Record !
+               <div className="mb-2 md:mb-6 flex items-center justify-center gap-2 text-yellow-600 font-bold bg-yellow-100 py-1 px-2 md:py-2 rounded-lg border border-yellow-200 text-xs md:text-base">
+                 <Trophy size={14} className="md:w-5 md:h-5" fill="currentColor" /> Nouveau Record !
                </div>
              )}
 
-             <div className="grid grid-cols-2 gap-2 md:gap-3">
+             <div className="grid grid-cols-2 gap-2 md:gap-3 w-full">
                 <button 
                   onClick={resetGame}
-                  className="flex flex-col items-center justify-center gap-1 py-2 md:py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-colors text-sm md:text-base"
+                  className="flex flex-col items-center justify-center gap-1 py-1.5 md:py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-colors text-xs md:text-base"
                 >
-                  <RefreshCw size={20} className="md:w-6 md:h-6" />
+                  <RefreshCw size={16} className="md:w-6 md:h-6" />
                   <span>Rejouer</span>
                 </button>
                 <button 
                   onClick={handleShare}
-                  className={`flex flex-col items-center justify-center gap-1 py-2 md:py-3 rounded-xl font-bold transition-all text-sm md:text-base ${copySuccess ? 'bg-green-100 text-green-700' : 'bg-blue-100 hover:bg-blue-200 text-blue-700'}`}
+                  className={`flex flex-col items-center justify-center gap-1 py-1.5 md:py-3 rounded-xl font-bold transition-all text-xs md:text-base ${copySuccess ? 'bg-green-100 text-green-700' : 'bg-blue-100 hover:bg-blue-200 text-blue-700'}`}
                 >
-                  {copySuccess ? <Check size={20} className="md:w-6 md:h-6" /> : <Share2 size={20} className="md:w-6 md:h-6" />}
-                  <span>{copySuccess ? 'Copié !' : 'Partager'}</span>
+                  {copySuccess ? <Check size={16} className="md:w-6 md:h-6" /> : <Share2 size={16} className="md:w-6 md:h-6" />}
+                  <span>{copySuccess ? 'Copié' : 'Partager'}</span>
                 </button>
              </div>
            </div>
