@@ -440,68 +440,168 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
 
     const COLORS = {
       SKIN: '#FFD1AA',
-      SHIRT: '#39FF14',
-      SHORTS: '#C2B280',
+      SHIRT: '#39FF14', // Neon Green
+      SHORTS: '#1f2937', // Dark Grey/Slate
       SOCKS: '#111827',
       SHOES: '#1F2937',
       HAIR: '#5D4037',
       GLASSES: '#000000',
-      EYES: '#000000'
     };
 
-    const CENTER_X = 17;
-    const runCycle = Math.floor(frame / 5) % 2; 
-    const legOffset = isJumping ? 0 : (runCycle === 0 ? 5 : -5);
+    // Animation calculation
+    // Slow down the frame for smooth swing
+    const t = frame * 0.25; 
+    const swingRange = 0.8;
+    const legLeftAngle = isJumping ? 0.2 : Math.sin(t) * swingRange;
+    const legRightAngle = isJumping ? -0.4 : Math.sin(t + Math.PI) * swingRange;
+    const armLeftAngle = isJumping ? -2.5 : Math.sin(t + Math.PI) * swingRange * 0.8;
+    const armRightAngle = isJumping ? -2.5 : Math.sin(t) * swingRange * 0.8;
 
-    const leftKneeX = (CENTER_X - 4) + (isJumping ? 10 : legOffset * 2);
-    const leftFootX = (CENTER_X - 4) + (isJumping ? 5 : legOffset * 3);
-    const rightKneeX = (CENTER_X + 4) + (isJumping ? 10 : -legOffset * 2);
-    const rightFootX = (CENTER_X + 4) + (isJumping ? 5 : -legOffset * 3);
+    // Coordinates (Relative to x,y top-left of player box)
+    // Box is approx 34x80
+    const HEAD_X = 17; // Center
+    const HEAD_Y = 12;
+    const NECK_Y = 22;
+    const WAIST_Y = 48;
+    
+    const SHOULDER_Y = 25;
+    
+    // --- Helper for rotated limbs ---
+    const drawLimb = (startX: number, startY: number, angle: number, length: number, width: number, color: string) => {
+        ctx.save();
+        ctx.translate(startX, startY);
+        ctx.rotate(angle);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, length);
+        ctx.stroke();
+        
+        // Return end point for chaining (knees/elbows)
+        const endX = startX + Math.sin(-angle) * length; // Note: simplified rotation logic for vertical lines
+        const endY = startY + Math.cos(angle) * length;
+        ctx.restore();
+        return { x: endX, y: endY }; // Approx
+    };
 
+    // --- LEFT LIMBS (BACKGROUND) ---
+    // Left Arm
+    ctx.save();
+    ctx.translate(HEAD_X, SHOULDER_Y);
+    ctx.rotate(armLeftAngle);
+    ctx.fillStyle = COLORS.SKIN;
     ctx.strokeStyle = COLORS.SKIN;
     ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.moveTo(CENTER_X - 4, 50); ctx.lineTo(leftKneeX, 70); ctx.lineTo(leftFootX, 78); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(CENTER_X + 4, 50); ctx.lineTo(rightKneeX, 70); ctx.lineTo(rightFootX, 78); ctx.stroke();
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 25); ctx.stroke();
+    ctx.restore();
 
-    ctx.fillStyle = COLORS.SOCKS;
-    ctx.beginPath(); ctx.rect(leftFootX - 2, 74, 4, 6); ctx.fill();
-    ctx.beginPath(); ctx.rect(rightFootX - 2, 74, 4, 6); ctx.fill();
-    ctx.fillStyle = COLORS.SHOES;
-    ctx.beginPath(); ctx.ellipse(leftFootX, 80, 6, 3, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(rightFootX, 80, 6, 3, 0, 0, Math.PI * 2); ctx.fill();
-
-    ctx.fillStyle = COLORS.SHORTS;
-    ctx.fillRect(CENTER_X - 7, 45, 14, 12); 
-    ctx.fillStyle = COLORS.SHIRT;
-    ctx.fillRect(CENTER_X - 7, 25, 14, 25);
-    
+    // Left Leg
+    ctx.save();
+    ctx.translate(HEAD_X, WAIST_Y);
+    ctx.rotate(legLeftAngle);
+    // Thigh
     ctx.strokeStyle = COLORS.SKIN;
-    ctx.lineWidth = 3; 
-    ctx.beginPath(); ctx.moveTo(CENTER_X, 30); ctx.lineTo(CENTER_X + 13, 45 - legOffset); ctx.stroke();
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 18); ctx.stroke();
+    // Shin (approximate joint bending)
+    ctx.translate(0, 18);
+    ctx.rotate(isJumping ? 0.2 : (legLeftAngle > 0 ? 0.5 : 0.1)); // Bend knee when leg back
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 18); ctx.stroke();
+    // Shoe
+    ctx.translate(0, 18);
+    ctx.fillStyle = COLORS.SHOES;
+    ctx.fillRect(-2, 0, 8, 4);
+    ctx.restore();
 
+
+    // --- RIGHT LIMBS (FOREGROUND - Draw legs BEFORE shorts now) ---
+    // Right Leg
+    ctx.save();
+    ctx.translate(HEAD_X, WAIST_Y);
+    ctx.rotate(legRightAngle);
+    // Thigh
+    ctx.strokeStyle = COLORS.SKIN;
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 18); ctx.stroke();
+    // Shin
+    ctx.translate(0, 18);
+    ctx.rotate(isJumping ? 0.2 : (legRightAngle > 0 ? 0.5 : 0.1));
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 18); ctx.stroke();
+    // Shoe
+    ctx.translate(0, 18);
+    ctx.fillStyle = COLORS.SHOES;
+    ctx.fillRect(-2, 0, 8, 4);
+    ctx.restore();
+
+
+    // --- BODY ---
+    
+    // Torso (Shirt)
+    ctx.fillStyle = COLORS.SHIRT;
+    ctx.fillRect(HEAD_X - 6, NECK_Y, 12, WAIST_Y - NECK_Y);
+
+    // Shorts (Drawn AFTER legs so it covers the hip joints)
+    ctx.fillStyle = COLORS.SHORTS;
+    ctx.fillRect(HEAD_X - 6, WAIST_Y, 12, 10);
+
+
+    // --- HEAD ---
+    // Neck
     ctx.fillStyle = COLORS.SKIN;
-    ctx.beginPath(); ctx.arc(CENTER_X, 15, 11, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(HEAD_X - 2, HEAD_Y + 5, 4, 6);
 
-    ctx.fillStyle = COLORS.HAIR;
+    // Skull
     ctx.beginPath();
-    ctx.arc(CENTER_X, 13, 11, Math.PI + 0.5, Math.PI * 2 - 0.5);
-    ctx.lineTo(CENTER_X + 11, 18); ctx.lineTo(CENTER_X + 10, 12);
-    ctx.lineTo(CENTER_X, 5); ctx.lineTo(CENTER_X - 10, 12); ctx.lineTo(CENTER_X - 11, 18); ctx.fill();
+    ctx.arc(HEAD_X, HEAD_Y, 9, 0, Math.PI * 2);
+    ctx.fill();
 
+    // Hair (Balding - Crown on the left/back)
+    ctx.strokeStyle = COLORS.HAIR;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    // Draw arc from top-left (1.2PI approx) to bottom-left (0.8PI approx)
+    // Actually, drawing slightly more to cover the "back" of the head properly
+    ctx.arc(HEAD_X, HEAD_Y, 9, Math.PI * 0.6, Math.PI * 1.4, false); 
+    ctx.stroke();
+
+    // Nose (Profile view pointing Right)
+    ctx.fillStyle = COLORS.SKIN;
+    ctx.beginPath();
+    ctx.moveTo(HEAD_X + 7, HEAD_Y - 2);
+    ctx.lineTo(HEAD_X + 13, HEAD_Y + 2); // Pointy nose
+    ctx.lineTo(HEAD_X + 7, HEAD_Y + 5);
+    ctx.fill();
+
+    // Glasses
     ctx.strokeStyle = COLORS.GLASSES;
-    ctx.lineWidth = 2; 
-    ctx.beginPath(); ctx.arc(CENTER_X - 5, 15, 5.5, 0, Math.PI * 2); ctx.stroke();
-    ctx.beginPath(); ctx.arc(CENTER_X + 5, 15, 5.5, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = COLORS.EYES;
-    ctx.beginPath(); ctx.arc(CENTER_X - 5, 15, 1.5, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(CENTER_X + 5, 15, 1.5, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(CENTER_X, 15); ctx.lineTo(CENTER_X, 15); ctx.stroke();
-    ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(CENTER_X - 10, 14); ctx.lineTo(CENTER_X - 11, 12); ctx.stroke();
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(HEAD_X + 2, HEAD_Y - 1); // Ear position
+    ctx.lineTo(HEAD_X + 9, HEAD_Y - 1); // To nose
+    ctx.stroke();
+    // Lens
+    ctx.fillStyle = 'rgba(0,0,0,0.1)';
+    ctx.fillRect(HEAD_X + 9, HEAD_Y - 3, 2, 5);
+    ctx.strokeRect(HEAD_X + 9, HEAD_Y - 3, 2, 5);
 
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#8B5A2B';
-    ctx.beginPath(); ctx.arc(CENTER_X, 21, 4, 0.2, Math.PI - 0.2); ctx.stroke();
+
+    // Right Arm (Foreground - Last to overlap body)
+    ctx.save();
+    ctx.translate(HEAD_X, SHOULDER_Y);
+    ctx.rotate(armRightAngle);
+    ctx.fillStyle = COLORS.SKIN;
+    ctx.strokeStyle = COLORS.SKIN;
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 15); ctx.stroke();
+    // Forearm
+    ctx.translate(0, 15);
+    ctx.rotate(-0.5); // Always bent a bit
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 12); ctx.stroke();
+    ctx.restore();
 
     ctx.restore();
   };
@@ -675,21 +775,21 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
 
       {/* Start Screen Overlay */}
       {displayStatus === GameStatus.START && (
-        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center text-white p-6 text-center z-10">
-          <div className="bg-white p-8 rounded-2xl shadow-2xl text-slate-800 max-w-md w-full animate-fade-in-up">
-            <h1 className="text-3xl md:text-4xl font-extrabold mb-2 text-blue-600">Quentin Qui Court</h1>
-            <p className="text-slate-500 mb-6">Évite les obstacles. Cours aussi loin que possible !</p>
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center text-white p-4 text-center z-10">
+          <div className="bg-white p-5 md:p-8 rounded-xl md:rounded-2xl shadow-2xl text-slate-800 w-[90%] md:w-auto max-w-md animate-fade-in-up">
+            <h1 className="text-2xl md:text-4xl font-extrabold mb-2 text-blue-600">Quentin Qui Court</h1>
+            <p className="text-slate-500 mb-4 md:mb-6 text-sm md:text-base">Évite les obstacles. Cours aussi loin que possible !</p>
             
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 md:gap-4">
               <button 
                 onClick={resetGame}
-                className="flex items-center justify-center gap-2 w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-lg transition-transform hover:scale-[1.02] active:scale-[0.98]"
+                className="flex items-center justify-center gap-2 w-full py-3 md:py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-base md:text-lg transition-transform hover:scale-[1.02] active:scale-[0.98]"
               >
-                <Play size={24} fill="currentColor" />
+                <Play size={20} className="md:w-6 md:h-6" fill="currentColor" />
                 JOUER
               </button>
               
-              <div className="text-sm text-slate-400 mt-2">
+              <div className="text-xs md:text-sm text-slate-400 mt-1 md:mt-2">
                 Appuie pour sauter
               </div>
             </div>
@@ -700,29 +800,29 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
       {/* Game Over Overlay */}
       {displayStatus === GameStatus.GAME_OVER && (
         <div className="absolute inset-0 bg-black/50 backdrop-blur-md flex flex-col items-center justify-center text-white p-4 z-10">
-           <div className="bg-white p-8 rounded-2xl shadow-2xl text-slate-800 max-w-sm w-full text-center transform transition-all scale-100">
-             <div className="mb-2 text-red-500 font-extrabold text-2xl uppercase tracking-widest">Game Over</div>
-             <div className="text-5xl font-black text-slate-900 mb-6 font-mono">{currentScore}</div>
+           <div className="bg-white p-4 md:p-8 rounded-xl md:rounded-2xl shadow-2xl text-slate-800 w-[90%] md:w-auto max-w-sm text-center transform transition-all scale-100">
+             <div className="mb-1 md:mb-2 text-red-500 font-extrabold text-lg md:text-2xl uppercase tracking-widest">Game Over</div>
+             <div className="text-3xl md:text-5xl font-black text-slate-900 mb-3 md:mb-6 font-mono">{currentScore}</div>
              
              {isNewRecord && currentScore > 0 && (
-               <div className="mb-6 flex items-center justify-center gap-2 text-yellow-600 font-bold bg-yellow-100 py-2 rounded-lg border border-yellow-200">
-                 <Trophy size={20} fill="currentColor" /> Nouveau Record !
+               <div className="mb-3 md:mb-6 flex items-center justify-center gap-2 text-yellow-600 font-bold bg-yellow-100 py-1 md:py-2 px-2 rounded-lg border border-yellow-200 text-sm md:text-base">
+                 <Trophy size={16} className="md:w-5 md:h-5" fill="currentColor" /> Nouveau Record !
                </div>
              )}
 
-             <div className="grid grid-cols-2 gap-3">
+             <div className="grid grid-cols-2 gap-2 md:gap-3">
                 <button 
                   onClick={resetGame}
-                  className="flex flex-col items-center justify-center gap-1 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-colors"
+                  className="flex flex-col items-center justify-center gap-1 py-2 md:py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-colors text-sm md:text-base"
                 >
-                  <RefreshCw size={24} />
+                  <RefreshCw size={20} className="md:w-6 md:h-6" />
                   <span>Rejouer</span>
                 </button>
                 <button 
                   onClick={handleShare}
-                  className={`flex flex-col items-center justify-center gap-1 py-3 rounded-xl font-bold transition-all ${copySuccess ? 'bg-green-100 text-green-700' : 'bg-blue-100 hover:bg-blue-200 text-blue-700'}`}
+                  className={`flex flex-col items-center justify-center gap-1 py-2 md:py-3 rounded-xl font-bold transition-all text-sm md:text-base ${copySuccess ? 'bg-green-100 text-green-700' : 'bg-blue-100 hover:bg-blue-200 text-blue-700'}`}
                 >
-                  {copySuccess ? <Check size={24} /> : <Share2 size={24} />}
+                  {copySuccess ? <Check size={20} className="md:w-6 md:h-6" /> : <Share2 size={20} className="md:w-6 md:h-6" />}
                   <span>{copySuccess ? 'Copié !' : 'Partager'}</span>
                 </button>
              </div>
