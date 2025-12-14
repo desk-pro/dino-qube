@@ -32,14 +32,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
   const scoreRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
   const onGameOverRef = useRef(onGameOver);
-  const highScoreRef = useRef(highScore); // Ref to track latest highscore in loop
+  const highScoreRef = useRef(highScore);
 
-  // Keep onGameOver fresh in the loop
   useEffect(() => {
     onGameOverRef.current = onGameOver;
   }, [onGameOver]);
 
-  // Keep highScore fresh in the loop
   useEffect(() => {
     highScoreRef.current = highScore;
   }, [highScore]);
@@ -55,25 +53,17 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
   });
   const obstaclesRef = useRef<Obstacle[]>([]);
   const cloudsRef = useRef<Cloud[]>([]);
-  // Initialize particle pool with inactive particles
+  
   const particlesRef = useRef<Particle[]>(
     Array.from({ length: MAX_PARTICLES }, (_, i) => ({
       id: i,
-      x: 0,
-      y: 0,
-      vx: 0,
-      vy: 0,
-      life: 0,
-      decay: 0,
-      size: 0,
-      color: '#000',
-      active: false
+      x: 0, y: 0, vx: 0, vy: 0, life: 0, decay: 0, size: 0, color: '#000', active: false
     }))
   );
   const starsRef = useRef<Star[]>([]);
   const gameSpeedRef = useRef<number>(INITIAL_SPEED);
   const frameCountRef = useRef<number>(0);
-  const cycleRef = useRef<number>(0); // 0 to 1 representing day/night cycle
+  const cycleRef = useRef<number>(0);
 
   // React State for UI
   const [displayStatus, setDisplayStatus] = useState<GameStatus>(GameStatus.START);
@@ -83,7 +73,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
 
   // --- Helpers ---
   
-  // Initialize Stars (for night time)
   useEffect(() => {
     if (starsRef.current.length === 0) {
       for(let i=0; i<50; i++) {
@@ -98,7 +87,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     }
   }, []);
 
-  // --- Particle System (Object Pooling) ---
   const spawnParticles = (x: number, y: number, count: number, type: 'dust' | 'impact') => {
     let spawnedCount = 0;
     for (let i = 0; i < particlesRef.current.length; i++) {
@@ -120,13 +108,25 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
   };
 
   const spawnObstacle = () => {
-    const typeChance = Math.random();
-    let type: Obstacle['type'] = 'CACTUS_SMALL';
-    let width = 30;
-    let height = 50;
+    const r = Math.random();
+    // Par défaut, c'est un Bonsaï (petit ou grand)
+    // "CACTUS_SMALL" devient "BONSAI_SMALL"
+    let type: any = 'BONSAI_SMALL'; // Cast en any pour éviter les erreurs TS si le type n'est pas mis à jour
+    let width = 35;
+    let height = 45;
     let y = GROUND_Y - height;
 
-    if (scoreRef.current > 150 && Math.random() > 0.75) {
+    // Logique d'apparition du Torii (Très rare, seulement après un certain score)
+    const canSpawnTorii = scoreRef.current > 300;
+    const isTorii = canSpawnTorii && r > 0.96; // 4% de chance si conditions réunies
+
+    if (isTorii) {
+        type = 'TORII';
+        width = 50;
+        height = 65; // Assez grand
+        y = GROUND_Y - height;
+    } else if (scoreRef.current > 150 && r > 0.80) {
+        // Oiseau
         type = 'BIRD';
         width = 40;
         height = 30;
@@ -134,16 +134,18 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
         y = isHigh 
           ? GROUND_Y - PLAYER_HEIGHT - 10 
           : GROUND_Y - 50;
-    } else if (Math.random() > 0.8) {
+    } else if (r > 0.85) {
+        // Rocher
         type = 'ROCK';
         width = 40;
         height = 25;
         y = GROUND_Y - height;
-    } else if (typeChance > 0.6) {
-      type = 'CACTUS_LARGE';
-      width = 40;
-      height = 70;
-      y = GROUND_Y - height;
+    } else if (r > 0.5) {
+        // Grand Bonsaï
+        type = 'BONSAI_LARGE';
+        width = 45;
+        height = 65;
+        y = GROUND_Y - height;
     }
 
     const obstacle: Obstacle = {
@@ -206,17 +208,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     }
   }, []);
 
-  // Update loop now takes a Delta Time (dt) multiplier
-  // dt = 1.0 means running at exactly 60fps
-  // dt = 0.5 means running at 120fps (so we move half as much per frame)
   const update = (dt: number) => {
     if (statusRef.current !== GameStatus.PLAYING) return;
 
     const player = playerRef.current;
     
-    // Scale frame count by time for animations
     frameCountRef.current += 1 * dt;
-    
     cycleRef.current = (frameCountRef.current % 3000) / 3000;
 
     // Physics
@@ -244,7 +241,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
 
     // Score
     scoreRef.current += 0.1 * (gameSpeedRef.current / INITIAL_SPEED) * dt;
-    // We update UI state for score; safe to use stale currentScore in comparison as React dedupes state updates
     if (Math.floor(scoreRef.current) > currentScore) {
       setCurrentScore(Math.floor(scoreRef.current));
     }
@@ -270,10 +266,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     }
     obstaclesRef.current.length = activeObsCount;
 
-    // Clouds spawning
-    if (Math.random() < 0.01 * dt) spawnCloud(); // Adjust spawn rate by dt too
-    
-    // Update Clouds with dt
+    // Clouds
+    if (Math.random() < 0.01 * dt) spawnCloud();
     let activeCloudCount = 0;
     for (let i = 0; i < cloudsRef.current.length; i++) {
         const cloud = cloudsRef.current[i];
@@ -287,7 +281,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     }
     cloudsRef.current.length = activeCloudCount;
 
-    // Update Particles with dt
+    // Particles
     for (let i = 0; i < particlesRef.current.length; i++) {
         const p = particlesRef.current[i];
         if (p.active) {
@@ -332,6 +326,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
             width: obs.width - 4,
             height: obs.height - 4
         }
+      } else if (obs.type === 'TORII') {
+          // Hitbox un peu plus indulgente pour le Torii car il est large visuellement
+          obsHitbox = {
+            x: obs.x + 10,
+            y: obs.y + 2,
+            width: obs.width - 20,
+            height: obs.height - 4
+          }
       }
 
       if (
@@ -340,10 +342,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
         playerHitbox.y < obsHitbox.y + obsHitbox.height &&
         playerHitbox.y + playerHitbox.height > obsHitbox.y
       ) {
-        // Crash
         const finalScore = Math.floor(scoreRef.current);
-        
-        // Fix: Use ref to check against the latest high score, not the stale closure value
         if (finalScore > highScoreRef.current) {
             setIsNewRecord(true);
         } else {
@@ -352,7 +351,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
 
         statusRef.current = GameStatus.GAME_OVER;
         setDisplayStatus(GameStatus.GAME_OVER);
-        // Safely call the ref callback
         onGameOverRef.current(finalScore);
         
         spawnParticles(player.x + PLAYER_WIDTH/2, player.y + PLAYER_HEIGHT/2, 20, 'impact');
@@ -398,6 +396,93 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     ctx.restore();
   };
 
+  // NOUVEAU : Dessin du Bonsaï
+  const drawBonsai = (ctx: CanvasRenderingContext2D, obs: Obstacle) => {
+    ctx.save();
+    ctx.translate(obs.x, obs.y);
+
+    const w = obs.width;
+    const h = obs.height;
+
+    // Pot (Céramique sombre)
+    ctx.fillStyle = '#3E2723'; // Dark brown/Blackish
+    const potHeight = 12;
+    ctx.beginPath();
+    ctx.moveTo(w * 0.2, h); // bas gauche
+    ctx.lineTo(w * 0.8, h); // bas droite
+    ctx.lineTo(w * 0.9, h - potHeight); // haut droite
+    ctx.lineTo(w * 0.1, h - potHeight); // haut gauche
+    ctx.fill();
+
+    // Tronc (Tortueux)
+    ctx.strokeStyle = '#5D4037';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(w * 0.5, h - potHeight);
+    ctx.quadraticCurveTo(w * 0.3, h - potHeight - 10, w * 0.6, h - potHeight - 20);
+    ctx.quadraticCurveTo(w * 0.8, h - potHeight - 30, w * 0.5, h - potHeight - 40);
+    ctx.stroke();
+
+    // Feuillage (Nuages verts)
+    ctx.fillStyle = '#2E7D32'; // Vert bonsaï foncé
+    // Bas
+    ctx.beginPath();
+    ctx.arc(w * 0.3, h - potHeight - 15, 10, 0, Math.PI * 2);
+    ctx.fill();
+    // Milieu
+    ctx.beginPath();
+    ctx.arc(w * 0.75, h - potHeight - 25, 12, 0, Math.PI * 2);
+    ctx.fill();
+    // Haut
+    ctx.beginPath();
+    ctx.arc(w * 0.5, h - potHeight - 45, 14, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  };
+
+  // NOUVEAU : Dessin du Torii
+  const drawTorii = (ctx: CanvasRenderingContext2D, obs: Obstacle) => {
+    ctx.save();
+    ctx.translate(obs.x, obs.y);
+    
+    const RED = '#DC2626'; // Rouge vermillon
+    const BLACK = '#1a1a1a';
+
+    // Piliers (Hashira)
+    ctx.fillStyle = RED;
+    // Gauche
+    ctx.fillRect(5, 0, 6, obs.height);
+    // Droite
+    ctx.fillRect(obs.width - 11, 0, 6, obs.height);
+
+    // Lintel inférieur (Nuki) - Traverse les piliers
+    ctx.fillRect(0, 15, obs.width, 5);
+
+    // Lintel supérieur (Kasagi) - Courbé et noir sur le dessus
+    ctx.fillStyle = BLACK;
+    ctx.beginPath();
+    // Forme courbée du toit
+    ctx.moveTo(0, 5); // Coin haut gauche
+    ctx.quadraticCurveTo(obs.width / 2, 0, obs.width, 5); // Courbe vers le haut
+    ctx.lineTo(obs.width + 2, 0); // Pointe
+    ctx.lineTo(obs.width, 10);
+    ctx.quadraticCurveTo(obs.width / 2, 5, 0, 10); // Courbe bas
+    ctx.lineTo(-2, 0);
+    ctx.fill();
+    
+    // Partie rouge du lintel supérieur (Shimaki)
+    ctx.fillStyle = RED;
+    ctx.fillRect(2, 5, obs.width - 4, 6);
+
+    // Tablette au centre (Gakuzuka)
+    ctx.fillStyle = BLACK;
+    ctx.fillRect(obs.width/2 - 3, 5, 6, 10);
+
+    ctx.restore();
+  };
+
   const drawBird = (ctx: CanvasRenderingContext2D, obs: Obstacle) => {
     ctx.save();
     ctx.translate(obs.x, obs.y);
@@ -440,16 +525,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
 
     const COLORS = {
       SKIN: '#FFD1AA',
-      SHIRT: '#39FF14', // Neon Green
-      SHORTS: '#1f2937', // Dark Grey/Slate
+      SHIRT: '#39FF14',
+      SHORTS: '#1f2937',
       SOCKS: '#111827',
       SHOES: '#1F2937',
-      HAIR: '#5D4037', // Brown
+      HAIR: '#5D4037',
       GLASSES: '#000000',
     };
 
-    // Animation calculation
-    // Slow down the frame for smooth swing
     const t = frame * 0.25; 
     const swingRange = 0.8;
     const legLeftAngle = isJumping ? 0.2 : Math.sin(t) * swingRange;
@@ -457,37 +540,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     const armLeftAngle = isJumping ? -2.5 : Math.sin(t + Math.PI) * swingRange * 0.8;
     const armRightAngle = isJumping ? -2.5 : Math.sin(t) * swingRange * 0.8;
 
-    // Coordinates (Relative to x,y top-left of player box)
-    // Box is approx 34x80
-    const HEAD_X = 17; // Center
+    const HEAD_X = 17;
     const HEAD_Y = 12;
     const NECK_Y = 22;
     const WAIST_Y = 48;
-    
     const SHOULDER_Y = 25;
     
-    // --- Helper for rotated limbs ---
-    const drawLimb = (startX: number, startY: number, angle: number, length: number, width: number, color: string) => {
-        ctx.save();
-        ctx.translate(startX, startY);
-        ctx.rotate(angle);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = width;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(0, length);
-        ctx.stroke();
-        
-        // Return end point for chaining (knees/elbows)
-        const endX = startX + Math.sin(-angle) * length; // Note: simplified rotation logic for vertical lines
-        const endY = startY + Math.cos(angle) * length;
-        ctx.restore();
-        return { x: endX, y: endY }; // Approx
-    };
-
     // --- LEFT LIMBS (BACKGROUND) ---
-    // Left Arm
     ctx.save();
     ctx.translate(HEAD_X, SHOULDER_Y);
     ctx.rotate(armLeftAngle);
@@ -498,111 +557,83 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 25); ctx.stroke();
     ctx.restore();
 
-    // Left Leg
     ctx.save();
     ctx.translate(HEAD_X, WAIST_Y);
     ctx.rotate(legLeftAngle);
-    // Thigh
     ctx.strokeStyle = COLORS.SKIN;
     ctx.lineWidth = 4;
     ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 18); ctx.stroke();
-    // Shin (approximate joint bending)
     ctx.translate(0, 18);
-    ctx.rotate(isJumping ? 0.2 : (legLeftAngle > 0 ? 0.5 : 0.1)); // Bend knee when leg back
+    ctx.rotate(isJumping ? 0.2 : (legLeftAngle > 0 ? 0.5 : 0.1)); 
     ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 18); ctx.stroke();
-    // Shoe
     ctx.translate(0, 18);
     ctx.fillStyle = COLORS.SHOES;
     ctx.fillRect(-2, 0, 8, 4);
     ctx.restore();
 
 
-    // --- RIGHT LIMBS (FOREGROUND - Draw legs BEFORE shorts now) ---
-    // Right Leg
+    // --- RIGHT LIMBS (FOREGROUND) ---
     ctx.save();
     ctx.translate(HEAD_X, WAIST_Y);
     ctx.rotate(legRightAngle);
-    // Thigh
     ctx.strokeStyle = COLORS.SKIN;
     ctx.lineWidth = 4;
     ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 18); ctx.stroke();
-    // Shin
     ctx.translate(0, 18);
     ctx.rotate(isJumping ? 0.2 : (legRightAngle > 0 ? 0.5 : 0.1));
     ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 18); ctx.stroke();
-    // Shoe
     ctx.translate(0, 18);
     ctx.fillStyle = COLORS.SHOES;
     ctx.fillRect(-2, 0, 8, 4);
     ctx.restore();
 
-
     // --- BODY ---
-    
-    // Torso (Shirt)
     ctx.fillStyle = COLORS.SHIRT;
     ctx.fillRect(HEAD_X - 6, NECK_Y, 12, WAIST_Y - NECK_Y);
-
-    // Shorts (Drawn AFTER legs so it covers the hip joints)
     ctx.fillStyle = COLORS.SHORTS;
     ctx.fillRect(HEAD_X - 6, WAIST_Y, 12, 10);
 
-
-    // --- HEAD (Calvitie style) ---
-    // Neck
+    // --- HEAD ---
     ctx.fillStyle = COLORS.SKIN;
     ctx.fillRect(HEAD_X - 2, HEAD_Y + 5, 4, 6);
-
-    // Face/Head Base
     ctx.fillStyle = COLORS.SKIN;
     ctx.beginPath();
     ctx.arc(HEAD_X, HEAD_Y, 9, 0, Math.PI * 2);
     ctx.fill();
 
-    // Hair - Brown, Receding hairline (Calvitie frontale)
     ctx.fillStyle = COLORS.HAIR;
     ctx.beginPath();
-    // Start at back-bottom of ear
     ctx.arc(HEAD_X, HEAD_Y, 9.5, Math.PI * 0.7, Math.PI * 1.7, false);
-    // Cut back in high on the forehead to create receding look
-    // Go to side
-    ctx.quadraticCurveTo(HEAD_X + 7, HEAD_Y - 4, HEAD_X, HEAD_Y - 8); // High hairline point
+    ctx.quadraticCurveTo(HEAD_X + 7, HEAD_Y - 4, HEAD_X, HEAD_Y - 8); 
     ctx.quadraticCurveTo(HEAD_X - 7, HEAD_Y - 4, HEAD_X - 8, HEAD_Y + 3); 
     ctx.fill();
 
-    // Glasses (Black)
     ctx.strokeStyle = COLORS.GLASSES;
-    ctx.lineWidth = 0.3; // Even thinner lines as requested
+    ctx.lineWidth = 0.3;
     ctx.beginPath();
-    // Frame
     ctx.moveTo(HEAD_X + 2, HEAD_Y - 3);
     ctx.lineTo(HEAD_X + 9, HEAD_Y - 3);
     ctx.lineTo(HEAD_X + 9, HEAD_Y + 2);
     ctx.lineTo(HEAD_X + 2, HEAD_Y + 2);
     ctx.closePath();
     ctx.stroke();
-    // Arm
     ctx.beginPath();
     ctx.moveTo(HEAD_X + 2, HEAD_Y - 1);
-    ctx.lineTo(HEAD_X - 2, HEAD_Y - 2); // To ear
+    ctx.lineTo(HEAD_X - 2, HEAD_Y - 2); 
     ctx.stroke();
 
-    // Eye (Dot in middle of glasses)
     ctx.fillStyle = 'black';
     ctx.beginPath();
     ctx.arc(HEAD_X + 6, HEAD_Y - 0.5, 1, 0, Math.PI * 2);
     ctx.fill();
 
-    // Mouth (Horizontal line)
     ctx.strokeStyle = '#3E2723';
-    ctx.lineWidth = 0.5; // Thinner as requested
+    ctx.lineWidth = 0.5;
     ctx.beginPath();
     ctx.moveTo(HEAD_X + 6, HEAD_Y + 5);
     ctx.lineTo(HEAD_X + 9, HEAD_Y + 5);
     ctx.stroke();
 
-
-    // Right Arm (Foreground - Last to overlap body)
     ctx.save();
     ctx.translate(HEAD_X, SHOULDER_Y);
     ctx.rotate(armRightAngle);
@@ -611,9 +642,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
     ctx.lineWidth = 4;
     ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 15); ctx.stroke();
-    // Forearm
     ctx.translate(0, 15);
-    ctx.rotate(-0.5); // Always bent a bit
+    ctx.rotate(-0.5); 
     ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 12); ctx.stroke();
     ctx.restore();
 
@@ -665,17 +695,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
         drawBird(ctx, obs);
       } else if (obs.type === 'ROCK') {
         drawRock(ctx, obs);
+      } else if (obs.type === 'TORII') {
+        drawTorii(ctx, obs);
       } else {
-        ctx.fillStyle = '#16a34a'; 
-        const w = obs.width;
-        const h = obs.height;
-        const x = obs.x;
-        const y = obs.y;
-        ctx.fillRect(x + w * 0.3, y, w * 0.4, h);
-        ctx.fillRect(x, y + h * 0.3, w * 0.3, h * 0.1);
-        ctx.fillRect(x, y + h * 0.1, w * 0.1, h * 0.3);
-        ctx.fillRect(x + w * 0.7, y + h * 0.4, w * 0.3, h * 0.1);
-        ctx.fillRect(x + w * 0.9, y + h * 0.2, w * 0.1, h * 0.3);
+        // Dessin par défaut (les Bonsaïs remplacent les cactus)
+        drawBonsai(ctx, obs);
       }
     });
 
@@ -696,16 +720,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, highScore }) => {
   };
 
   const loop = (time: number) => {
-    // Initializing lastTimeRef to start fresh
     if (lastTimeRef.current === 0) {
         lastTimeRef.current = time;
     }
     const deltaTime = time - lastTimeRef.current;
     lastTimeRef.current = time;
     
-    // Normalize delta time relative to 60fps (16.66ms per frame)
-    // dt = 1.0 means we are running exactly at 60fps
-    // Cap at 4 (approx 15fps) to prevent spiraling physics on lag spikes
     const dt = Math.min(deltaTime / FRAME_TIME, 4);
 
     update(dt);

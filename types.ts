@@ -13,7 +13,7 @@ export interface GameObject {
 
 export interface Obstacle extends GameObject {
   id: number;
-  type: 'CACTUS_SMALL' | 'CACTUS_LARGE' | 'BIRD' | 'ROCK';
+  type: 'BONSAI_SMALL' | 'BONSAI_LARGE' | 'BIRD' | 'ROCK' | 'TORII';
 }
 
 export interface Cloud {
