@@ -14,3 +14,5 @@ export const PLAYER_START_X = 50;
 
 export const OBSTACLE_SPAWN_MIN_GAP = 300; // Minimum pixels between obstacles
 export const OBSTACLE_SPAWN_MAX_GAP = 700;
+
+export const FRAME_TIME = 1000 / 60;
